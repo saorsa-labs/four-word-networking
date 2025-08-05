@@ -261,8 +261,7 @@ pub fn assert_encoding_roundtrip(original: &str, encoded: &str, decoded: &str) {
                 // IPv6 decoder has a known bug, skip validation
                 eprintln!(
                     "WARNING: IPv6 roundtrip test skipped (known decoder bug): {original} -> {encoded} -> {decoded}"
-                );
-                return; // Skip the assertion
+                ); // Skip the assertion
             }
         }
     } else {

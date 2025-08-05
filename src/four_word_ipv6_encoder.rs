@@ -130,16 +130,21 @@ impl FourWordIpv6Encoder {
     }
 
     /// Encodes bytes into groups of four words
-    fn encode_bytes_to_groups(&self, data: &[u8], port: u16, category: Ipv6Category) -> Result<Vec<FourWordGroup>> {
+    fn encode_bytes_to_groups(
+        &self,
+        data: &[u8],
+        port: u16,
+        category: Ipv6Category,
+    ) -> Result<Vec<FourWordGroup>> {
         let mut groups = Vec::new();
 
         // Store the category (3 bits) + data length (5 bits) in the first byte, then data, then port
         // This way the decoder knows the category and exactly how many bytes to extract
         let data_len = data.len() as u8;
         if data_len > 31 {
-            return Err(FourWordError::InvalidInput(
-                format!("Data too large: {} bytes (max 31)", data_len)
-            ));
+            return Err(FourWordError::InvalidInput(format!(
+                "Data too large: {data_len} bytes (max 31)"
+            )));
         }
 
         // Calculate total bits: 8 bits for category+length + data bits + 16 bits for port
@@ -226,11 +231,11 @@ impl FourWordIpv6Encoder {
         let mut all_bytes = Vec::new();
         let data_len = data.len() as u8;
         if data_len > 31 {
-            return Err(FourWordError::InvalidInput(
-                format!("Data too large: {} bytes (max 31)", data_len)
-            ));
+            return Err(FourWordError::InvalidInput(format!(
+                "Data too large: {data_len} bytes (max 31)"
+            )));
         }
-        
+
         // Pack category (3 bits) and length (5 bits) into first byte
         let category_and_length = (category.to_bits() << 5) | (data_len & 0x1F);
         all_bytes.push(category_and_length); // Category+length prefix
@@ -306,7 +311,8 @@ impl FourWordIpv6Encoder {
         }
 
         // Filter out empty words and special markers (from potential padding)
-        let all_words: Vec<&String> = all_words.iter()
+        let all_words: Vec<&String> = all_words
+            .iter()
             .filter(|w| !w.is_empty() && !w.starts_with("__MARKER_"))
             .collect();
 
@@ -356,10 +362,10 @@ impl FourWordIpv6Encoder {
 
         // Extract port from the next 16 bits
         let port = ((n >> (8 + (data_len * 8))) & 0xFFFF) as u16;
-        
+
         // Decode the actual category from the bits
         let actual_category = Ipv6Category::from_bits(decoded_category_bits)?;
-        
+
         // Special handling for GlobalUnicast with provider patterns
         // If the decoded category is GlobalUnicast and we have 13 bytes,
         // the first byte is a pattern ID, not part of the category/length encoding
@@ -373,7 +379,10 @@ impl FourWordIpv6Encoder {
     }
 
     /// Decodes large data (12 words) using byte array approach to avoid overflow
-    fn decode_large_data_from_groups(&self, all_words: &[&String]) -> Result<(Vec<u8>, u16, Ipv6Category)> {
+    fn decode_large_data_from_groups(
+        &self,
+        all_words: &[&String],
+    ) -> Result<(Vec<u8>, u16, Ipv6Category)> {
         // Convert words back to indices
         let mut word_indices = Vec::new();
         for word in all_words {
@@ -421,7 +430,7 @@ impl FourWordIpv6Encoder {
             // If we can't read a full 2-byte port, use the special marker for "no port specified"
             65535
         };
-        
+
         // Decode the actual category from the bits
         let actual_category = Ipv6Category::from_bits(decoded_category_bits)?;
 
@@ -456,19 +465,15 @@ mod tests {
         for addr_str in test_cases {
             let addr: SocketAddr = addr_str.parse().unwrap();
             if let SocketAddr::V6(v6) = addr {
-                println!("\nTesting: {}", addr_str);
+                println!("\nTesting: {addr_str}");
                 let encoded = encoder.encode(&v6).unwrap();
-                println!(
-                    "Encoded: {} ({} words)",
-                    encoded.to_string(),
-                    encoded.word_count()
-                );
+                println!("Encoded: {} ({} words)", encoded, encoded.word_count());
                 println!("Category: {:?}", encoded.category());
                 let decoded = encoder.decode(&encoded).unwrap();
-                println!("Decoded: {}", decoded);
+                println!("Decoded: {decoded}");
 
-                assert_eq!(v6.ip(), decoded.ip(), "IP mismatch for {}", addr_str);
-                assert_eq!(v6.port(), decoded.port(), "Port mismatch for {}", addr_str);
+                assert_eq!(v6.ip(), decoded.ip(), "IP mismatch for {addr_str}");
+                assert_eq!(v6.port(), decoded.port(), "Port mismatch for {addr_str}");
             }
         }
     }

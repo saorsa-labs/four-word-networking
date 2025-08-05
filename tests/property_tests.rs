@@ -44,7 +44,7 @@ proptest! {
             // Each word should be valid
             for word in words {
                 prop_assert!(!word.is_empty(), "Word cannot be empty");
-                prop_assert!(word.len() >= 1, "Word too short: {}", word);
+                prop_assert!(!word.is_empty(), "Word too short: {}", word);
                 // Dictionary can have words up to 25 characters (e.g., "counterrevolutionaries")
                 prop_assert!(word.len() <= 25, "Word too long: {}", word);
                 prop_assert!(word.chars().all(|c| c.is_ascii_lowercase()),
@@ -267,7 +267,7 @@ fn qc_word_format_consistency(a: u8, b: u8, c: u8, d: u8) -> TestResult {
                     return TestResult::failed();
                 }
                 // Allow 1-25 character words (GOLD wordlist includes single-character words)
-                if word.len() < 1 || word.len() > 25 {
+                if word.is_empty() || word.len() > 25 {
                     return TestResult::failed();
                 }
                 // Words should be lowercase alphabetic only (no dashes in space-separated format)

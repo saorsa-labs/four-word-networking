@@ -97,7 +97,7 @@ fn looks_like_words(input: &str) -> bool {
     // Check if all segments are alphabetic and meet minimum length requirement
     segments
         .iter()
-        .all(|segment| segment.len() >= 1 && segment.chars().all(|c| c.is_alphabetic()))
+        .all(|segment| !segment.is_empty() && segment.chars().all(|c| c.is_alphabetic()))
 }
 
 /// Encode IP address to words
@@ -178,9 +178,11 @@ mod tests {
 
         // Valid words - 6 words with spaces
         assert!(looks_like_words("ocean thunder falcon star book april"));
-        
+
         // Valid words - 9 words with spaces
-        assert!(looks_like_words("ocean thunder falcon star book april wing moon river"));
+        assert!(looks_like_words(
+            "ocean thunder falcon star book april wing moon river"
+        ));
 
         // Valid words - 4 words with dots
         assert!(looks_like_words("ocean.thunder.falcon.star"));

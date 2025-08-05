@@ -24,13 +24,11 @@ fn test_utf8_characters_after_bracket() {
                 let decoded = encoder.decode(&encoded).expect("Failed to decode");
                 assert!(
                     decoded.starts_with('['),
-                    "Decoded should be IPv6 format for {}",
-                    description
+                    "Decoded should be IPv6 format for {description}"
                 );
                 assert!(
                     decoded.contains("]:"),
-                    "Decoded should contain port separator for {}",
-                    description
+                    "Decoded should contain port separator for {description}"
                 );
             }
             Err(_) => {
@@ -84,10 +82,7 @@ fn test_valid_ipv6_with_port_after_utf8_fix() {
 
         assert!(
             decoded.starts_with(expected_prefix) || decoded == expected_prefix,
-            "Expected {} to decode to something starting with {}, got {}",
-            input,
-            expected_prefix,
-            decoded
+            "Expected {input} to decode to something starting with {expected_prefix}, got {decoded}"
         );
     }
 }
@@ -106,8 +101,7 @@ fn test_invalid_utf8_in_address() {
     for addr in invalid_addresses {
         assert!(
             encoder.encode(addr).is_err(),
-            "Should reject IPv6 address with UTF-8 characters: {}",
-            addr
+            "Should reject IPv6 address with UTF-8 characters: {addr}"
         );
     }
 }
@@ -131,8 +125,7 @@ fn test_multibyte_port_separator() {
                 // Should decode with default port or port 0
                 assert!(
                     decoded.ends_with(":0") || !decoded.contains(':'),
-                    "Should not parse port with non-ASCII separator for {}",
-                    description
+                    "Should not parse port with non-ASCII separator for {description}"
                 );
             }
             Err(_) => {

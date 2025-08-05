@@ -60,7 +60,7 @@ fn test_ip_address_workflow() {
         let encoder = FourWordAdaptiveEncoder::new().unwrap();
         if let Ok(encoded) = encoder.encode(addr) {
             let decoded = encoder.decode(&encoded).expect("Decoding failed");
-            assert_eq!(addr, &decoded, "Roundtrip failed for {}", addr);
+            assert_eq!(addr, &decoded, "Roundtrip failed for {addr}");
         }
     }
 
@@ -69,7 +69,7 @@ fn test_ip_address_workflow() {
         let encoder = FourWordAdaptiveEncoder::new().unwrap();
         if let Ok(encoded) = encoder.encode(addr) {
             let decoded = encoder.decode(&encoded).expect("Decoding failed");
-            assert_eq!(addr, &decoded, "Roundtrip failed for {}", addr);
+            assert_eq!(addr, &decoded, "Roundtrip failed for {addr}");
         }
     }
 }
@@ -89,7 +89,7 @@ fn test_invalid_input_handling() {
 
     for input in invalid_inputs {
         match encode_ip_address(input) {
-            Ok(_) => panic!("Expected error for invalid input: {}", input),
+            Ok(_) => panic!("Expected error for invalid input: {input}"),
             Err(_) => {} // Expected
         }
     }
@@ -108,8 +108,7 @@ fn test_word_validation() {
         let result = validate_word_format(words);
         assert!(
             result.is_ok(),
-            "Valid words should pass validation: {}",
-            words
+            "Valid words should pass validation: {words}"
         );
     }
 
@@ -124,8 +123,7 @@ fn test_word_validation() {
         let result = validate_word_format(words);
         assert!(
             result.is_err(),
-            "Invalid words should fail validation: {}",
-            words
+            "Invalid words should fail validation: {words}"
         );
     }
 }
@@ -183,8 +181,7 @@ fn test_batch_processing_performance() {
     // Should process at least 100 operations per second (more lenient for debug builds)
     assert!(
         ops_per_sec >= 100.0,
-        "Batch processing too slow: {:.2} ops/sec",
-        ops_per_sec
+        "Batch processing too slow: {ops_per_sec:.2} ops/sec"
     );
 }
 
@@ -276,10 +273,7 @@ fn test_compression_efficiency() {
 
         assert!(
             byte_count <= expected_max_bytes,
-            "Encoding too long for {}: {} bytes > {} bytes",
-            addr,
-            byte_count,
-            expected_max_bytes
+            "Encoding too long for {addr}: {byte_count} bytes > {expected_max_bytes} bytes"
         );
     }
 }
@@ -312,12 +306,11 @@ fn test_word_quality() {
 
     // Test word properties
     for word in words {
-        assert!(word.len() >= 1, "Word too short: {}", word);
+        assert!(!word.is_empty(), "Word too short: {word}");
         // No maximum length restriction - frequency-based words can be longer
         assert!(
             word.chars().all(|c| c.is_ascii_lowercase()),
-            "Word contains invalid characters: {}",
-            word
+            "Word contains invalid characters: {word}"
         );
     }
 }
@@ -336,10 +329,10 @@ fn test_error_recovery() {
 
     for words in malformed_words {
         match decode_words(words) {
-            Ok(_) => panic!("Expected error for malformed words: {}", words),
+            Ok(_) => panic!("Expected error for malformed words: {words}"),
             Err(e) => {
                 // Error should be descriptive
-                let error_msg = format!("{}", e);
+                let error_msg = format!("{e}");
                 assert!(!error_msg.is_empty(), "Error message should not be empty");
                 assert!(error_msg.len() > 10, "Error message should be descriptive");
             }
@@ -357,7 +350,7 @@ fn test_cli_integration() {
 
     // Test CLI encoding
     let output = Command::new("cargo")
-        .args(&["run", "--bin", "4wn", "--", test_ip])
+        .args(["run", "--bin", "4wn", "--", test_ip])
         .output()
         .expect("Failed to execute CLI");
 
@@ -370,7 +363,7 @@ fn test_cli_integration() {
 
     // Test CLI decoding
     let output = Command::new("cargo")
-        .args(&["run", "--bin", "4wn", "--", &encoded])
+        .args(["run", "--bin", "4wn", "--", &encoded])
         .output()
         .expect("Failed to execute CLI");
 

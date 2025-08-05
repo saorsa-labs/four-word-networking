@@ -21,23 +21,21 @@ fn test_ula_basic_addresses() {
     ];
 
     for (addr, description) in test_cases {
-        println!("Testing {}: {}", description, addr);
+        println!("Testing {description}: {addr}");
 
         let encoded = encoder.encode(addr).expect("Failed to encode");
         let decoded = encoder.decode(&encoded).expect("Failed to decode");
 
-        assert_eq!(decoded, addr, "Failed for {}", description);
+        assert_eq!(decoded, addr, "Failed for {description}");
 
         // Ensure no duplication in decoded address
         assert!(
             !decoded.contains("fc00:fc00"),
-            "Duplication bug detected for {}",
-            description
+            "Duplication bug detected for {description}"
         );
         assert!(
             !decoded.contains("fd00:fd00"),
-            "Duplication bug detected for {}",
-            description
+            "Duplication bug detected for {description}"
         );
     }
 }
@@ -57,12 +55,12 @@ fn test_ula_with_global_id() {
     ];
 
     for addr in test_cases {
-        println!("Testing ULA with global ID: {}", addr);
+        println!("Testing ULA with global ID: {addr}");
 
         let encoded = encoder.encode(addr).expect("Failed to encode");
         let decoded = encoder.decode(&encoded).expect("Failed to decode");
 
-        assert_eq!(decoded, addr, "Failed for {}", addr);
+        assert_eq!(decoded, addr, "Failed for {addr}");
     }
 }
 
@@ -89,12 +87,12 @@ fn test_ula_with_subnet_id() {
     ];
 
     for (addr, expected) in test_cases {
-        println!("Testing ULA with subnet ID: {} -> {}", addr, expected);
+        println!("Testing ULA with subnet ID: {addr} -> {expected}");
 
         let encoded = encoder.encode(addr).expect("Failed to encode");
         let decoded = encoder.decode(&encoded).expect("Failed to decode");
 
-        assert_eq!(decoded, expected, "Failed for {}", addr);
+        assert_eq!(decoded, expected, "Failed for {addr}");
     }
 }
 
@@ -121,12 +119,12 @@ fn test_ula_with_interface_id() {
     ];
 
     for (input, expected) in test_cases {
-        println!("Testing ULA with interface ID: {} -> {}", input, expected);
+        println!("Testing ULA with interface ID: {input} -> {expected}");
 
         let encoded = encoder.encode(input).expect("Failed to encode");
         let decoded = encoder.decode(&encoded).expect("Failed to decode");
 
-        assert_eq!(decoded, expected, "Failed for {}", input);
+        assert_eq!(decoded, expected, "Failed for {input}");
     }
 }
 
@@ -156,9 +154,7 @@ fn test_ula_encoding_uniqueness() {
         // Check that this encoding is unique
         assert!(
             encodings.insert(encoded.clone()),
-            "Duplicate encoding found for {}: {}",
-            addr,
-            encoded
+            "Duplicate encoding found for {addr}: {encoded}"
         );
     }
 }
@@ -181,8 +177,7 @@ fn test_ula_word_count() {
 
         assert_eq!(
             word_count, 6,
-            "ULA address {} should encode to 6 words, got {}",
-            addr, word_count
+            "ULA address {addr} should encode to 6 words, got {word_count}"
         );
     }
 }
@@ -206,18 +201,17 @@ fn test_ula_edge_cases() {
     ];
 
     for (addr, description) in test_cases {
-        println!("Testing edge case {}: {}", description, addr);
+        println!("Testing edge case {description}: {addr}");
 
         let encoded = encoder.encode(addr).expect("Failed to encode");
         let decoded = encoder.decode(&encoded).expect("Failed to decode");
 
-        assert_eq!(decoded, addr, "Failed for {}", description);
+        assert_eq!(decoded, addr, "Failed for {description}");
 
         // Extra check: ensure the prefix is preserved correctly
         assert!(
             decoded.starts_with("[fc") || decoded.starts_with("[fd"),
-            "ULA prefix not preserved for {}",
-            description
+            "ULA prefix not preserved for {description}"
         );
     }
 }
@@ -232,18 +226,16 @@ fn test_ula_with_different_ports() {
     let mut encodings = HashSet::new();
 
     for port in ports {
-        let addr = format!("[{}]:{}", base_addr, port);
+        let addr = format!("[{base_addr}]:{port}");
         let encoded = encoder.encode(&addr).expect("Failed to encode");
         let decoded = encoder.decode(&encoded).expect("Failed to decode");
 
-        assert_eq!(decoded, addr, "Failed for port {}", port);
+        assert_eq!(decoded, addr, "Failed for port {port}");
 
         // Ensure unique encoding for each port
         assert!(
             encodings.insert(encoded.clone()),
-            "Duplicate encoding found for port {}: {}",
-            port,
-            encoded
+            "Duplicate encoding found for port {port}: {encoded}"
         );
     }
 }
@@ -268,23 +260,19 @@ fn test_no_regression_fc00_duplication() {
         // The critical check: no duplication patterns
         assert!(
             !decoded.contains("fc00:fc00"),
-            "REGRESSION: fc00 duplication bug reappeared for {}",
-            addr
+            "REGRESSION: fc00 duplication bug reappeared for {addr}"
         );
         assert!(
             !decoded.contains("fd00:fd00"),
-            "REGRESSION: fd00 duplication bug reappeared for {}",
-            addr
+            "REGRESSION: fd00 duplication bug reappeared for {addr}"
         );
         assert!(
             !decoded.contains("fc01:fc01"),
-            "REGRESSION: fc01 duplication bug for {}",
-            addr
+            "REGRESSION: fc01 duplication bug for {addr}"
         );
         assert!(
             !decoded.contains("fd01:fd01"),
-            "REGRESSION: fd01 duplication bug for {}",
-            addr
+            "REGRESSION: fd01 duplication bug for {addr}"
         );
     }
 }

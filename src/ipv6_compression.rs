@@ -50,9 +50,9 @@ impl Ipv6Category {
             4 => Ok(Ipv6Category::GlobalUnicast),
             5 => Ok(Ipv6Category::Unspecified),
             6 => Ok(Ipv6Category::Special),
-            _ => Err(FourWordError::InvalidInput(
-                format!("Invalid category bits: {}", bits)
-            )),
+            _ => Err(FourWordError::InvalidInput(format!(
+                "Invalid category bits: {bits}"
+            ))),
         }
     }
 }
@@ -679,7 +679,7 @@ impl Ipv6Compressor {
             // Provider pattern case: 1 byte pattern ID + 12 bytes (6 segments)
             let pattern_id = data[0];
             let mut segments = [0u16; 8];
-            
+
             // Set the prefix based on pattern ID
             match pattern_id {
                 0 => {
@@ -698,23 +698,25 @@ impl Ipv6Compressor {
                     segments[1] = 0x0558;
                 }
                 _ => {
-                    return Err(FourWordError::InvalidInput(
-                        format!("Invalid provider pattern ID: {}", pattern_id)
-                    ))
+                    return Err(FourWordError::InvalidInput(format!(
+                        "Invalid provider pattern ID: {pattern_id}"
+                    )))
                 }
             }
-            
+
             // Decode the remaining 6 segments from the 12 bytes
             for i in 0..6 {
                 let byte_offset = 1 + (i * 2); // Skip pattern ID byte
-                segments[i + 2] = ((data[byte_offset] as u16) << 8) | (data[byte_offset + 1] as u16);
+                segments[i + 2] =
+                    ((data[byte_offset] as u16) << 8) | (data[byte_offset + 1] as u16);
             }
-            
+
             Ok(Ipv6Addr::from(segments))
         } else {
-            Err(FourWordError::InvalidInput(
-                format!("Invalid global unicast data length: {} bytes", data.len())
-            ))
+            Err(FourWordError::InvalidInput(format!(
+                "Invalid global unicast data length: {} bytes",
+                data.len()
+            )))
         }
     }
 
@@ -750,7 +752,7 @@ mod tests {
 
         assert_eq!(compressed.category, Ipv6Category::Loopback);
         assert_eq!(compressed.compressed_data.len(), 6); // Padded to 6 bytes
-        // With category byte + 6 bytes data = 56 bits total = 4 words
+                                                         // With category byte + 6 bytes data = 56 bits total = 4 words
         assert!(compressed.recommended_word_count() >= 4); // IPv6 minimum 4 words
 
         let (decompressed_ip, port) = compressor.decompress(&compressed).unwrap();

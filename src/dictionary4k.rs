@@ -21,7 +21,7 @@ pub struct Dictionary4K {
 impl Dictionary4K {
     /// Creates a new dictionary from the embedded word list
     pub fn new() -> Result<Self, String> {
-        let wordlist = include_str!("../GOLD_WORDLIST.txt");
+        let wordlist = include_str!("../GOLD_WORDLIST_OPTIMIZED.txt");
         let words: Vec<String> = wordlist
             .lines()
             .filter(|line| !line.trim().is_empty())

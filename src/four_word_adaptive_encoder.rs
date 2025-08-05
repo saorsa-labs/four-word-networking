@@ -135,11 +135,23 @@ impl FourWordAdaptiveEncoder {
 
         // Parse words and filter out empty strings
         let all_words: Vec<String> = if words.contains(' ') {
-            words.split(' ').filter(|s| !s.is_empty()).map(|s| s.to_string()).collect()
+            words
+                .split(' ')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect()
         } else if words.contains('.') {
-            words.split('.').filter(|s| !s.is_empty()).map(|s| s.to_string()).collect()
+            words
+                .split('.')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect()
         } else {
-            words.split('-').filter(|s| !s.is_empty()).map(|s| s.to_string()).collect()
+            words
+                .split('-')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect()
         };
 
         // IPv6 can have 6, 9, or 12 words
@@ -151,7 +163,7 @@ impl FourWordAdaptiveEncoder {
         }
 
         let mut groups = Vec::new();
-        
+
         // Create groups of 4 words, handling 6 and 9 word cases properly
         match all_words.len() {
             6 => {
@@ -200,17 +212,19 @@ impl FourWordAdaptiveEncoder {
                 // For 12 words, create groups of 4
                 for chunk in all_words.chunks(4) {
                     groups.push(FourWordGroup::new(
-                        chunk.get(0).cloned().unwrap_or_default(),
+                        chunk.first().cloned().unwrap_or_default(),
                         chunk.get(1).cloned().unwrap_or_default(),
                         chunk.get(2).cloned().unwrap_or_default(),
                         chunk.get(3).cloned().unwrap_or_default(),
                     ));
                 }
             }
-            _ => return Err(FourWordError::InvalidWordCount {
-                expected: 6,
-                actual: all_words.len(),
-            }),
+            _ => {
+                return Err(FourWordError::InvalidWordCount {
+                    expected: 6,
+                    actual: all_words.len(),
+                })
+            }
         };
 
         // For decoding, we don't know the category yet, so use a placeholder
