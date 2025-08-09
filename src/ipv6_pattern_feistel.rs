@@ -127,7 +127,7 @@ impl IPv6PatternFeistel {
 
         // Place pattern bits at positions 0, 8, 16 for easy extraction
         result |= pattern_mask & 1; // A at bit 0
-        result |= ((pattern_mask >> 1) & 1) << 8; // B at bit 8  
+        result |= ((pattern_mask >> 1) & 1) << 8; // B at bit 8
         result |= ((pattern_mask >> 2) & 1) << 16; // C at bit 16
 
         // Place data starting at bit 1, leaving gaps for pattern bits

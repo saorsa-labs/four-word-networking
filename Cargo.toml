@@ -2,10 +2,10 @@
 
 [package]
 name = "four-word-networking"
-version = "2.3.1"
+version = "2.4.0"
 edition = "2024"
 authors = ["David Irvine <david.irvine@autonomi.com>"]
-description = "Convert IP addresses to memorable, family-friendly word groups. IPv4 = 4 words, IPv6 = 8 words. Perfect reconstruction with human-readable vocabulary."
+description = "Convert IP addresses to memorable, family-friendly word groups with autocomplete API. IPv4 = 4 words, IPv6 = 6-12 words. Perfect reconstruction with progressive hints and validation."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/dirvine/four-word-networking"
 documentation = "https://docs.rs/four-word-networking"
