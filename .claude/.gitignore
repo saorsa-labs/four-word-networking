@@ -1,0 +1,13 @@
+# Ignore temporary files
+*.tmp
+*.swp
+*.swo
+*~
+
+# Ignore state files that change frequently
+state/current_task.txt
+state/last_check.txt
+events/*.log
+
+# Keep directory structure
+!.gitkeep

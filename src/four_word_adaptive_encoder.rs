@@ -2,9 +2,11 @@
 //!
 //! This is the main public API for four-word networking.
 
+use crate::dictionary4k::DICTIONARY;
 use crate::error::{FourWordError, Result};
 use crate::four_word_encoder::FourWordEncoder;
 use crate::four_word_ipv6_encoder::{FourWordIpv6Encoder, Ipv6FourWordGroupEncoding};
+use crate::validation::{AutocompleteHelper, ValidationResult};
 use std::net::{IpAddr, SocketAddr};
 
 /// The main four-word networking encoder interface
@@ -233,6 +235,183 @@ impl FourWordAdaptiveEncoder {
             groups,
             Ipv6Category::GlobalUnicast, // placeholder - will be replaced during decoding
         ))
+    }
+
+    // ========== Autocomplete & Hints API ==========
+
+    /// Get word hints for a given prefix
+    ///
+    /// Returns all dictionary words that start with the given prefix.
+    /// With 5 characters, typically returns exactly one word due to unique prefix guarantee.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use four_word_networking::FourWordAdaptiveEncoder;
+    ///
+    /// let encoder = FourWordAdaptiveEncoder::new().unwrap();
+    ///
+    /// // Get hints for 3-character prefix
+    /// let hints = encoder.get_word_hints("bea");
+    /// assert!(!hints.is_empty());
+    /// assert!(hints.iter().all(|w| w.starts_with("bea")));
+    ///
+    /// // With 5 characters, should get unique match
+    /// let hints = encoder.get_word_hints("beach");
+    /// assert!(hints.len() <= 1);
+    /// ```
+    pub fn get_word_hints(&self, prefix: &str) -> Vec<String> {
+        AutocompleteHelper::get_word_hints(prefix)
+    }
+
+    /// Validate partial input and provide suggestions
+    ///
+    /// Analyzes partial word input to determine validity and provide completions.
+    /// Returns information about word count, validity, and possible completions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use four_word_networking::FourWordAdaptiveEncoder;
+    ///
+    /// let encoder = FourWordAdaptiveEncoder::new().unwrap();
+    ///
+    /// // Validate partial input
+    /// let result = encoder.validate_partial_input("about abo").unwrap();
+    /// assert!(result.is_valid_prefix);
+    /// assert_eq!(result.word_count_so_far, 1);
+    /// assert!(!result.possible_completions.is_empty());
+    /// ```
+    pub fn validate_partial_input(&self, partial: &str) -> Result<ValidationResult> {
+        AutocompleteHelper::validate_partial_input(partial)
+    }
+
+    /// Suggest completions for partial word sequences
+    ///
+    /// Returns up to 10 complete suggestions based on partial input.
+    /// Useful for implementing dropdown autocomplete in UIs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use four_word_networking::FourWordAdaptiveEncoder;
+    ///
+    /// let encoder = FourWordAdaptiveEncoder::new().unwrap();
+    ///
+    /// // Get suggestions for partial input with complete word + partial
+    /// let suggestions = encoder.suggest_completions("about ab").unwrap();
+    /// assert!(!suggestions.is_empty());
+    ///
+    /// // Get suggestions for just a partial word
+    /// let partial_suggestions = encoder.suggest_completions("abo").unwrap();
+    /// assert!(!partial_suggestions.is_empty());
+    /// ```
+    pub fn suggest_completions(&self, partial_words: &str) -> Result<Vec<String>> {
+        AutocompleteHelper::suggest_completions(partial_words)
+    }
+
+    /// Auto-complete a word if it has a unique 5-character prefix
+    ///
+    /// Returns the complete word if the prefix uniquely identifies it.
+    /// This enables instant completion when users type 5 characters.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use four_word_networking::FourWordAdaptiveEncoder;
+    ///
+    /// let encoder = FourWordAdaptiveEncoder::new().unwrap();
+    ///
+    /// // With 5+ unique characters
+    /// let word = encoder.auto_complete_at_five("beach");
+    /// assert_eq!(word, Some("beach".to_string()));
+    ///
+    /// // With less than 5 characters
+    /// let word = encoder.auto_complete_at_five("bea");
+    /// assert_eq!(word, None);
+    /// ```
+    pub fn auto_complete_at_five(&self, prefix: &str) -> Option<String> {
+        AutocompleteHelper::auto_complete_at_five(prefix)
+    }
+
+    /// Suggest corrections for potentially misspelled words
+    ///
+    /// Returns suggested corrections for words not found in the dictionary.
+    /// Uses prefix matching to find similar words.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use four_word_networking::FourWordAdaptiveEncoder;
+    ///
+    /// let encoder = FourWordAdaptiveEncoder::new().unwrap();
+    ///
+    /// // Get corrections for misspelled word
+    /// let corrections = encoder.suggest_corrections("aboot");
+    /// assert!(!corrections.is_empty());
+    ///
+    /// // Valid word returns itself
+    /// let corrections = encoder.suggest_corrections("about");
+    /// assert_eq!(corrections.first(), Some(&"about".to_string()));
+    /// ```
+    pub fn suggest_corrections(&self, word: &str) -> Vec<String> {
+        AutocompleteHelper::suggest_corrections(word)
+    }
+
+    /// Check if a string is a valid word prefix
+    ///
+    /// Returns true if the prefix matches at least one dictionary word.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use four_word_networking::FourWordAdaptiveEncoder;
+    ///
+    /// let encoder = FourWordAdaptiveEncoder::new().unwrap();
+    ///
+    /// assert!(encoder.is_valid_prefix("abo"));
+    /// assert!(encoder.is_valid_prefix("about"));
+    /// assert!(!encoder.is_valid_prefix("xyz"));
+    /// ```
+    pub fn is_valid_prefix(&self, prefix: &str) -> bool {
+        DICTIONARY.is_valid_prefix(prefix)
+    }
+
+    /// Get statistics about possible completions
+    ///
+    /// Returns information about how many words match a given prefix.
+    /// Useful for UI feedback about autocomplete possibilities.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use four_word_networking::FourWordAdaptiveEncoder;
+    ///
+    /// let encoder = FourWordAdaptiveEncoder::new().unwrap();
+    ///
+    /// let (count, unique_at_five) = encoder.get_completion_stats("abo");
+    /// assert!(count > 0);
+    /// // unique_at_five indicates if typing 2 more chars will give unique match
+    /// ```
+    pub fn get_completion_stats(&self, prefix: &str) -> (usize, bool) {
+        let hints = self.get_word_hints(prefix);
+        let count = hints.len();
+
+        // Check if extending to 5 characters would give unique results
+        let unique_at_five = if prefix.len() < 5 {
+            // Check if all hints have unique 5-character prefixes
+            let mut five_char_prefixes = std::collections::HashSet::new();
+            for hint in &hints {
+                if hint.len() >= 5 {
+                    five_char_prefixes.insert(&hint[..5]);
+                }
+            }
+            five_char_prefixes.len() == hints.len()
+        } else {
+            count <= 1
+        };
+
+        (count, unique_at_five)
     }
 }
 

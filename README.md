@@ -120,48 +120,35 @@ IPv6 encoding: 6-12 words (adaptive based on address complexity)
 Dictionary size: 4,096 words (2^12)
 ```
 
-#### How we chose the words 
+#### How We Chose the Words
 
-A curated set of 4096 lowercase English words for human-readable four-word identifiers in our networking crate. The list emphasises pronounceability, visual clarity, and UK English conventions. It avoids brand names and sensitive/offensive terms, and standardises obvious US→UK spellings (e.g., color → colour, center → centre, defense → defence).
+A curated set of 4,096 lowercase English words for human-readable four-word identifiers. The list emphasizes pronounceability, visual clarity, and UK English conventions. It avoids brand names and sensitive/offensive terms, and standardizes US→UK spellings (e.g., color → colour, center → centre, defense → defence).
 
-Why 4,096? Power-of-two sizing (2¹²) plays nicely with bit-packing and codecs, but—critically for humans—words beat raw base-n strings: they’re easier to say, hear, write, and spot typos in. This mirrors prior art (Diceware, BIP-39, PGP word lists) that all trade a small amount of entropy density for big UX wins.
+**Why 4,096?** Power-of-two sizing (2¹²) plays nicely with bit-packing and codecs, but—critically for humans—words beat raw base-n strings: they're easier to say, hear, write, and spot typos in. This mirrors prior art (Diceware, BIP-39, PGP word lists) that all trade a small amount of entropy density for big UX wins.
 
-Design goals
-	•	Readable & pronounceable. Everyday vocabulary; simple syllable structure; no ALL-CAPS, digits, or punctuation.
-	•	UK English. Prefer colour, metre, neighbour, licence, programme, theatre, organise (we pick a consistent style and stick to it).
-	•	Avoid confusion. We removed obvious homophone landmines (e.g., to/too/two, cite/site/sight) where they overlapped with other risks, and we ban brands/trademarks and sensitive/offensive terms.
-	•	Stable size & order. Exactly 4096 entries, alphabetical, one word per line.
-	•	Prefix awareness. We track collisions on the first 5 characters and try to minimise them (handy for autocomplete and error-reduction), taking inspiration from BIP-39’s “first four letters uniquely identify a word” rule.
+**Design Goals:**
+- **Readable & pronounceable**: Everyday vocabulary; simple syllable structure; no ALL-CAPS, digits, or punctuation
+- **UK English**: Prefer colour, metre, neighbour, licence, programme, theatre, organise (consistent style throughout)
+- **Avoid confusion**: Removed obvious homophone landmines (e.g., to/too/two, cite/site/sight) and banned brands/trademarks and sensitive/offensive terms
+- **Stable size & order**: Exactly 4,096 entries, alphabetical, one word per line
+- **Prefix uniqueness**: Every word has unique first-5 characters for perfect autocomplete and error-reduction
 
-Note: BIP-39’s first-4-letters-are-unique design is a proven pattern for rapid, error-resistant input. We don’t clone BIP-39 (that list is only 2048 words and has different constraints), but we adopt the same spirit of short unique prefixes where feasible.
+**What We Deliberately Exclude:**
+- Brands & trademarks (e.g., nike, pepsi, disney, xerox, volkswagen)
+- Sensitive/offensive terms (e.g., suicide, murder, torture, hijack, etc.)
+- All-caps acronyms / leetspeak
 
-What we deliberately exclude
-	•	Brands & trademarks (e.g., nike, pepsi, disney, xerox, volkswagen).
-	•	Sensitive/offensive terms (e.g., suicide, murder, torture, hijack, etc.).
-	•	All-caps acronyms / leetspeak.
+#### Prefix Uniqueness for Better UX
 
-(Proper nouns: for v1.1 we did not blanket-ban every proper noun because the top priority was readability + stability with your current corpus. If you want zero proper nouns, see “Roadmap” below—we can flip that switch in v1.2 without breaking downstream formats.)
+**v1.2 Update**: Enforces unique first-5 characters for every word in the set. This dramatically improves disambiguation for autocomplete and spoken entry, echoing the well-documented benefits of short unique prefixes in mnemonic wordlists.
 
-#### Updated word list 
+**Why first-5?** BIP-39's 2,048-word list famously guarantees unique first four for rapid human entry and error detection. We adopt the same idea and go a notch stricter at five characters because our corpus is larger (4,096) and we want even crisper UX in noisy or low-attention contexts.
 
-What changed from v1.1
-	•	Prefix uniqueness: v1.2 enforces unique first-5 characters for every word in the set. This dramatically improves disambiguation for autocomplete and spoken entry, echoing the well-documented benefits of short unique prefixes in mnemonic wordlists.
-	•	Safe substitutions only: To achieve uniqueness, we replaced the minimal number of words that clashed on the same 5-char prefix (208 replacements). Replacements are common, pronounceable UK-English words (3–9 letters, a–z only), avoiding brands/sensitive terms and US-only spellings.
-
-Why first-5?
-
-BIP-39’s 2,048-word list famously guarantees unique first four for rapid human entry and error detection. We adopt the same idea and go a notch stricter at five characters because our corpus is larger (4096) and we want even crisper UX in noisy or low-attention contexts.
-
-Integration guidance
-	•	Autocomplete: prompt suggestions at 3 chars; commit on 5 chars (now guaranteed unique).
-	•	Voice UI: reading or dictating any word’s first five letters suffices for unambiguous matching.
-	•	Validation: treat the TXT as canonical; fail closed if a word isn’t in the set.
-
-References & prior art
-	•	BIP-39: 4-letter uniqueness for mnemonics, human-friendly design goals.
-	•	EFF Diceware: curated English wordlists optimised for memorability.
-	•	PGP word list: phonetic clarity for error-resistant transmission.
-	•	S/KEY (RFC 2289): classic wordlist mapping for human-verifiable codes.
+**References & Prior Art:**
+- **BIP-39**: 4-letter uniqueness for mnemonics, human-friendly design goals
+- **EFF Diceware**: Curated English wordlists optimized for memorability
+- **PGP word list**: Phonetic clarity for error-resistant transmission
+- **S/KEY (RFC 2289)**: Classic wordlist mapping for human-verifiable codes
 
 
 ### Real-World Considerations
@@ -557,16 +544,92 @@ if let Ok(addr) = encoder.decode("beatniks contrarily stockholm river") {
 // Main API interface
 pub struct FourWordAdaptiveEncoder { ... }
 
-// Methods
+// Core Methods
 fn encode(&self, input: &str) -> Result<String>
 fn decode(&self, words: &str) -> Result<String>
 fn analyze(&self, input: &str) -> Result<String>
+
+// Autocomplete & Hints API
+fn get_word_hints(&self, prefix: &str) -> Vec<String>
+fn validate_partial_input(&self, partial: &str) -> ValidationResult
+fn suggest_completions(&self, partial_words: &str) -> Vec<String>
 
 // Input formats supported
 // - "192.168.1.1:443" (IPv4 with port)
 // - "192.168.1.1" (IPv4 without port)
 // - "[::1]:443" (IPv6 with port)
 // - "::1" (IPv6 without port)
+```
+
+### Autocomplete & Hints Integration
+
+#### Word Hints API
+```rust
+use four_word_networking::FourWordAdaptiveEncoder;
+
+let encoder = FourWordAdaptiveEncoder::new()?;
+
+// Get word suggestions after 3 characters
+let hints = encoder.get_word_hints("bea")?;
+// Returns: ["beach", "beam", "bean", "bear", "beard", "beast", "beat", "beatniks", ...]
+
+// Commit on 5 characters (guaranteed unique)
+let word = encoder.get_word_hints("beatn")?;
+// Returns: ["beatniks"] - single match due to 5-char uniqueness
+
+// Progressive hints for better UX
+let progressive_hints = encoder.suggest_completions("beatniks cont")?;
+// Returns: ["beatniks contrarily", "beatniks contact", ...]
+```
+
+#### Validation & Error Recovery
+```rust
+// Validate partial input
+let validation = encoder.validate_partial_input("beatniks contr")?;
+// Returns: ValidationResult {
+//   is_valid_prefix: true,
+//   possible_completions: ["contrarily"],
+//   word_count_so_far: 1,
+//   expected_total_words: 4  // for IPv4
+// }
+
+// Smart error recovery
+let corrected = encoder.suggest_corrections("beatnik contrarilly")?;
+// Returns: ["beatniks contrarily"] - fixes typos
+```
+
+#### Integration Guidance
+
+**Autocomplete Implementation:**
+- **3 characters**: Start showing suggestions from dictionary
+- **5 characters**: Auto-commit the word (guaranteed unique match)
+- **Word boundaries**: Automatically add space after completed word
+- **Visual feedback**: Show remaining words needed (e.g., "2 of 4 words")
+
+**Voice UI Integration:**
+- Reading any word's first 5 letters provides unambiguous match
+- Support phonetic input: "B-E-A-T-N" → "beatniks"
+- Confirm each word before proceeding to next
+
+**Progressive Disclosure:**
+```javascript
+// Example web interface
+function handleInput(text) {
+  if (text.length >= 3) {
+    // Show dropdown with suggestions
+    const hints = api.getWordHints(text);
+    showDropdown(hints);
+  }
+  
+  if (text.length >= 5) {
+    // Auto-complete if unique match
+    const match = api.getExactMatch(text);
+    if (match) {
+      completeWord(match);
+      focusNextWord();
+    }
+  }
+}
 ```
 
 ## Design Principles

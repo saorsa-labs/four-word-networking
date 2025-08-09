@@ -45,6 +45,7 @@ pub mod ipv6_perfect_patterns;
 pub mod pure_ip_compression;
 // Ultra modules removed - used outdated 3-word system
 pub mod universal_ip_compression;
+pub mod validation;
 
 #[cfg(test)]
 mod property_tests;
@@ -80,5 +81,4 @@ mod tests {
         let decoded = encoder.decode(&words).unwrap();
         assert_eq!(address, decoded);
     }
-
 }
