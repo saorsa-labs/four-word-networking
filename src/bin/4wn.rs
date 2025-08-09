@@ -1,33 +1,39 @@
 //! 4wn - Four-Word Networking CLI
 //!
-//! Simple command-line tool that automatically detects whether input is:
-//! - 4 words (IPv4) or 8/12 words (IPv6) → decode to IP:port
-//! - IP:port → encode to 4 words (IPv4) or 8/12 words (IPv6)
+//! Command-line tool with interactive autocomplete mode by default.
 //!
-//! Features 100% perfect reconstruction for IPv4 and adaptive compression for IPv6.
+//! Default (no args): Interactive mode with autocomplete hints and progressive completion
+//! With arguments: Direct conversion between IP addresses and words
+//!
+//! Features:
+//! - Interactive mode with hints at 3+ characters, auto-complete at 5 characters
+//! - Perfect reconstruction for IPv4 (4 words) and adaptive compression for IPv6 (6/9/12 words)
+//! - Real-time validation and completion suggestions
 //!
 //! Usage:
-//!   4wn 192.168.1.1:80          # Encodes to 4 words (perfect)
-//!   4wn a abaddon amphipoda arian  # Decodes to exact IPv4:port
-//!   4wn [2001:db8::1]:443      # Encodes to 8 or 12 words with visual distinction
-//!   4wn ocean thunder falcon star book april wing moon    # Decodes to IPv6
+//!   4wn                         # Interactive mode (default)
+//!   4wn 192.168.1.1:80          # Direct encode to 4 words
+//!   4wn a abaddon amphipoda arian  # Direct decode to IP:port
+//!   4wn [2001:db8::1]:443      # Direct encode IPv6 to words
 
 use clap::Parser;
 use four_word_networking::{FourWordAdaptiveEncoder, Result};
+use std::io::{self, Write};
 use std::process;
 
 #[derive(Parser)]
 #[command(
     name = "4wn",
-    about = "Four-Word Networking - Convert between IP addresses and memorable words",
-    long_about = "Automatically converts between IP addresses and four-word combinations.\n\
-                  Features 100% perfect reconstruction for IPv4 and adaptive compression for IPv6.\n\
-                  IPv4 uses 4 words with spaces, IPv6 uses 8 or 12 words with spaces.",
+    about = "Four-Word Networking - Interactive IP address to words converter",
+    long_about = "Interactive CLI for converting between IP addresses and memorable words.\n\
+                  Default: Interactive mode with autocomplete hints and progressive completion.\n\
+                  With arguments: Direct conversion between IP addresses and four-word combinations.\n\
+                  Features perfect reconstruction for IPv4 (4 words) and adaptive compression for IPv6 (6/9/12 words).",
     version
 )]
 struct Cli {
-    /// Input to convert (IP:port or words)
-    /// Can be a single string or multiple words
+    /// Input to convert (IP:port or words) - if provided, performs direct conversion
+    /// If no input provided, starts interactive mode with autocomplete
     input: Vec<String>,
 
     /// Show detailed information
@@ -37,6 +43,14 @@ struct Cli {
     /// Output format for scripting (minimal output)
     #[arg(short, long)]
     quiet: bool,
+
+    /// Show completion hints for a prefix (utility mode)
+    #[arg(short, long)]
+    complete: Option<String>,
+
+    /// Validate partial word input and show suggestions (utility mode)
+    #[arg(long)]
+    validate: Option<String>,
 }
 
 fn main() {
@@ -51,7 +65,23 @@ fn main() {
 fn run(cli: Cli) -> Result<()> {
     let encoder = FourWordAdaptiveEncoder::new()?;
 
-    // Join input arguments
+    // Handle utility modes first
+    if let Some(prefix) = cli.complete {
+        show_completion_hints(&encoder, &prefix)?;
+        return Ok(());
+    }
+
+    if let Some(partial) = cli.validate {
+        show_validation_results(&encoder, &partial)?;
+        return Ok(());
+    }
+
+    // If no input provided, start interactive mode
+    if cli.input.is_empty() {
+        return interactive_mode(&encoder, cli.verbose);
+    }
+
+    // Direct conversion mode with arguments
     let input = if cli.input.len() == 1 {
         // Single argument - could be IP or words with separators
         cli.input[0].trim().to_string()
@@ -165,6 +195,246 @@ fn decode_words(
     }
 
     Ok(())
+}
+
+/// Interactive mode with autocomplete and hints
+fn interactive_mode(encoder: &FourWordAdaptiveEncoder, verbose: bool) -> Result<()> {
+    println!("🌐 Four-Word Networking - Interactive Mode");
+    println!("Type an IP address or four words. Progressive hints at 3+ chars, auto-complete at 5 chars.");
+    println!("Type 'quit' or 'exit' to leave, 'help' for usage, Ctrl+C to interrupt.\n");
+
+    let mut current_input = String::new();
+    let mut current_words: Vec<String> = Vec::new();
+
+    loop {
+        // Show current state
+        if !current_words.is_empty() {
+            print!("Words: {} ", current_words.join(" "));
+            if current_words.len() == 4 {
+                print!("✓");
+            } else if current_words.len() < 4 {
+                print!("({}/4)", current_words.len());
+            }
+        }
+
+        if !current_input.is_empty() {
+            print!(" Typing: {current_input}");
+        }
+
+        print!("\n4wn> ");
+        io::stdout().flush().unwrap();
+
+        let mut line = String::new();
+        if io::stdin().read_line(&mut line).is_err() {
+            break;
+        }
+
+        let input = line.trim();
+
+        // Handle commands
+        match input.to_lowercase().as_str() {
+            "quit" | "exit" => {
+                println!("Goodbye! 👋");
+                break;
+            }
+            "help" => {
+                show_help();
+                continue;
+            }
+            "clear" => {
+                current_words.clear();
+                current_input.clear();
+                println!("Cleared current input.");
+                continue;
+            }
+            "" => continue,
+            _ => {}
+        }
+
+        // Try processing as complete input first
+        if let Ok(result) = process_complete_input(encoder, input, verbose) {
+            if let Some(output) = result {
+                println!("→ {output}");
+            }
+            continue;
+        }
+
+        // Handle progressive word building
+        handle_progressive_input(encoder, input, &mut current_input, &mut current_words);
+    }
+
+    Ok(())
+}
+
+/// Process input as complete IP address or word sequence
+fn process_complete_input(
+    encoder: &FourWordAdaptiveEncoder,
+    input: &str,
+    verbose: bool,
+) -> Result<Option<String>> {
+    // Check if it looks like an IP address or complete word sequence
+    if input.contains(':') || input.contains('[') || input.parse::<std::net::IpAddr>().is_ok() {
+        // Looks like IP address
+        let encoded = encoder.encode(input)?;
+        if verbose {
+            Ok(Some(format!("{input} → {encoded}")))
+        } else {
+            Ok(Some(encoded))
+        }
+    } else if looks_like_words(input) {
+        // Looks like complete word sequence
+        let decoded = encoder.decode(input)?;
+        if verbose {
+            Ok(Some(format!("{input} → {decoded}")))
+        } else {
+            Ok(Some(decoded))
+        }
+    } else {
+        // Not complete input
+        Err(four_word_networking::FourWordError::InvalidInput(
+            "Not complete input".to_string(),
+        ))
+    }
+}
+
+/// Handle progressive input with autocomplete
+fn handle_progressive_input(
+    encoder: &FourWordAdaptiveEncoder,
+    input: &str,
+    current_input: &mut String,
+    current_words: &mut Vec<String>,
+) {
+    current_input.push_str(input);
+
+    // Check for space (word completion)
+    if current_input.contains(' ') {
+        let parts: Vec<&str> = current_input.split(' ').collect();
+        if let Some(word) = parts.first() {
+            if !word.is_empty() {
+                // Complete the current word
+                if let Some(completed) = try_complete_word(encoder, word) {
+                    current_words.push(completed);
+                    *current_input = parts[1..].join(" ");
+
+                    // Check if we have 4 words (complete IPv4)
+                    if current_words.len() == 4 {
+                        let word_sequence = current_words.join(" ");
+                        if let Ok(decoded) = encoder.decode(&word_sequence) {
+                            println!("✅ Complete! {word_sequence} → {decoded}");
+                        }
+                        current_words.clear();
+                        current_input.clear();
+                    }
+                } else {
+                    println!("❌ '{word}' is not a valid word. Try again.");
+                    current_input.clear();
+                }
+            }
+        }
+    } else {
+        // Show hints for current input
+        show_progressive_hints(encoder, current_input);
+    }
+}
+
+/// Try to complete a partial word
+fn try_complete_word(encoder: &FourWordAdaptiveEncoder, partial: &str) -> Option<String> {
+    // Auto-complete at 5 characters
+    if partial.len() >= 5 {
+        return encoder.auto_complete_at_five(partial);
+    }
+
+    // Check if it's already a complete word
+    let hints = encoder.get_word_hints(partial);
+    if hints.len() == 1 && hints[0] == partial {
+        return Some(partial.to_string());
+    }
+
+    None
+}
+
+/// Show progressive hints for current input
+fn show_progressive_hints(encoder: &FourWordAdaptiveEncoder, input: &str) {
+    if input.len() < 3 {
+        return;
+    }
+
+    let hints = encoder.get_word_hints(input);
+    match hints.len() {
+        0 => println!("❌ No words start with '{input}'"),
+        1 => {
+            if hints[0] == input {
+                println!("✅ '{input}' is complete");
+            } else {
+                println!("💡 Complete: {}", hints[0]);
+            }
+        }
+        2..=5 => {
+            println!("💡 Hints: {}", hints.join(", "));
+        }
+        _ => {
+            println!(
+                "💡 {} possibilities: {}, ...",
+                hints.len(),
+                hints[..3].join(", ")
+            );
+        }
+    }
+}
+
+/// Show completion hints utility function
+fn show_completion_hints(encoder: &FourWordAdaptiveEncoder, prefix: &str) -> Result<()> {
+    let hints = encoder.get_word_hints(prefix);
+    if hints.is_empty() {
+        println!("No words found starting with '{prefix}'");
+    } else {
+        println!("Completions for '{}' ({} found):", prefix, hints.len());
+        for hint in hints.iter().take(10) {
+            println!("  {hint}");
+        }
+        if hints.len() > 10 {
+            println!("  ... and {} more", hints.len() - 10);
+        }
+    }
+    Ok(())
+}
+
+/// Show validation results utility function
+fn show_validation_results(encoder: &FourWordAdaptiveEncoder, partial: &str) -> Result<()> {
+    let result = encoder.validate_partial_input(partial)?;
+
+    println!("Validation results for '{partial}':");
+    println!("  Valid prefix: {}", result.is_valid_prefix);
+    println!("  Words so far: {}", result.word_count_so_far);
+    println!("  Is complete: {}", result.is_complete);
+
+    if !result.possible_completions.is_empty() {
+        println!("  Completions: {}", result.possible_completions.join(", "));
+    }
+
+    Ok(())
+}
+
+/// Show help information
+fn show_help() {
+    println!("🌐 Four-Word Networking Help");
+    println!();
+    println!("Interactive Mode Commands:");
+    println!("  help     - Show this help");
+    println!("  clear    - Clear current input");
+    println!("  quit     - Exit the program");
+    println!();
+    println!("Usage:");
+    println!("  • Type IP address → get 4 words (IPv4) or 6/9/12 words (IPv6)");
+    println!("  • Type words → get IP address");
+    println!("  • Progressive hints appear at 3+ characters");
+    println!("  • Auto-completion happens at 5+ characters");
+    println!("  • Space completes current word and moves to next");
+    println!();
+    println!("Examples:");
+    println!("  192.168.1.1    → four memorable words");
+    println!("  about beam cat → reconstructed IP address");
+    println!("  ::1            → six words for IPv6 loopback");
 }
 
 #[cfg(test)]
