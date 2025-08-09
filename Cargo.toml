@@ -2,13 +2,13 @@
 
 [package]
 name = "four-word-networking"
-version = "2.4.0"
+version = "2.5.0"
 edition = "2024"
 authors = ["David Irvine <david.irvine@autonomi.com>"]
-description = "Convert IP addresses to memorable, family-friendly word groups with autocomplete API. IPv4 = 4 words, IPv6 = 6-12 words. Perfect reconstruction with progressive hints and validation."
+description = "Convert IP addresses to memorable, family-friendly word groups. Interactive TUI with real-time autocomplete. IPv4 = 4 words, IPv6 = 6-12 words. Perfect reconstruction with progressive hints."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/dirvine/four-word-networking"
-documentation = "https://docs.rs/four-word-networking"
+documentation = "https://docs.rs/4wn"
 homepage = "https://github.com/dirvine/four-word-networking"
 readme = "README.md"
 keywords = ["networking", "ip-address", "human-readable", "encoding", "cli"]
@@ -39,6 +39,7 @@ hex = "0.4"
 bs58 = "0.5"
 bitvec = "1.0"
 once_cell = "1.20"
+crossterm = "0.28"
 
 [dev-dependencies]
 tokio-test = "0.4"

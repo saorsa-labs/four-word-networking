@@ -17,9 +17,18 @@
 //!   4wn [2001:db8::1]:443      # Direct encode IPv6 to words
 
 use clap::Parser;
-use four_word_networking::{FourWordAdaptiveEncoder, Result};
+use four_word_networking::{FourWordAdaptiveEncoder, FourWordError, Result};
 use std::io::{self, Write};
 use std::process;
+
+// TUI imports for real-time interactive mode
+use crossterm::{
+    cursor,
+    event::{self, Event, KeyCode, KeyEventKind},
+    execute, queue,
+    style::{Color, Print, ResetColor, SetForegroundColor},
+    terminal::{self, ClearType},
+};
 
 #[derive(Parser)]
 #[command(
@@ -198,75 +207,401 @@ fn decode_words(
 }
 
 /// Interactive mode with autocomplete and hints
+/// Interactive mode with real-time character input and autocomplete
 fn interactive_mode(encoder: &FourWordAdaptiveEncoder, verbose: bool) -> Result<()> {
-    println!("🌐 Four-Word Networking - Interactive Mode");
-    println!("Type an IP address or four words. Progressive hints at 3+ chars, auto-complete at 5 chars.");
-    println!("Type 'quit' or 'exit' to leave, 'help' for usage, Ctrl+C to interrupt.\n");
+    // Enable raw mode for character-by-character input
+    terminal::enable_raw_mode()
+        .map_err(|e| FourWordError::InvalidInput(format!("Failed to enable raw mode: {e}")))?;
+
+    // Clean up terminal on exit
+    let cleanup = || {
+        let _ = terminal::disable_raw_mode();
+        let _ = execute!(io::stdout(), cursor::Show, ResetColor);
+    };
+
+    // Set up panic hook to cleanup terminal
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = terminal::disable_raw_mode();
+        let _ = execute!(io::stdout(), cursor::Show, ResetColor);
+        original_hook(info);
+    }));
+
+    let result = run_interactive_tui(encoder, verbose);
+
+    // Always cleanup
+    cleanup();
+
+    result
+}
+
+/// Run the actual TUI interactive mode
+fn run_interactive_tui(encoder: &FourWordAdaptiveEncoder, verbose: bool) -> Result<()> {
+    let mut stdout = io::stdout();
+
+    // Clear screen and show header
+    execute!(
+        stdout,
+        terminal::Clear(ClearType::All),
+        cursor::MoveTo(0, 0),
+        Print(
+            "🌐 Four-Word Networking - Interactive Mode
+"
+        ),
+        Print(
+            "Real-time autocomplete: Progressive hints at 3+ chars, auto-complete at 5 chars
+"
+        ),
+        Print(
+            "Commands: quit/exit to leave, Ctrl+C to interrupt, Tab for completion
+
+"
+        )
+    )
+    .map_err(|e| FourWordError::InvalidInput(format!("Terminal error: {e}")))?;
 
     let mut current_input = String::new();
-    let mut current_words: Vec<String> = Vec::new();
+    let mut cursor_pos = 0;
+    let mut completed_words = Vec::<String>::new();
 
     loop {
-        // Show current state
-        if !current_words.is_empty() {
-            print!("Words: {} ", current_words.join(" "));
-            if current_words.len() == 4 {
-                print!("✓");
-            } else if current_words.len() < 4 {
-                print!("({}/4)", current_words.len());
+        // Render current state
+        render_ui(
+            &mut stdout,
+            &current_input,
+            cursor_pos,
+            &completed_words,
+            encoder,
+            verbose,
+        )?;
+
+        // Read next event
+        if let Ok(event) = event::read() {
+            match event {
+                Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                    match key_event.code {
+                        KeyCode::Char('c')
+                            if key_event.modifiers.contains(event::KeyModifiers::CONTROL) =>
+                        {
+                            break;
+                        }
+                        KeyCode::Char('q')
+                            if key_event.modifiers.contains(event::KeyModifiers::CONTROL) =>
+                        {
+                            break;
+                        }
+                        KeyCode::Enter => {
+                            if handle_enter(&current_input, &mut completed_words, encoder, verbose)?
+                            {
+                                break;
+                            }
+                            current_input.clear();
+                            cursor_pos = 0;
+                        }
+                        KeyCode::Tab => {
+                            // Handle tab completion
+                            if let Some(completion) = get_best_completion(encoder, &current_input) {
+                                current_input = completion;
+                                cursor_pos = current_input.len();
+                            }
+                        }
+                        KeyCode::Backspace => {
+                            if cursor_pos > 0 {
+                                current_input.remove(cursor_pos - 1);
+                                cursor_pos -= 1;
+                            }
+                        }
+                        KeyCode::Delete => {
+                            if cursor_pos < current_input.len() {
+                                current_input.remove(cursor_pos);
+                            }
+                        }
+                        KeyCode::Left => {
+                            cursor_pos = cursor_pos.saturating_sub(1);
+                        }
+                        KeyCode::Right => {
+                            if cursor_pos < current_input.len() {
+                                cursor_pos += 1;
+                            }
+                        }
+                        KeyCode::Home => {
+                            cursor_pos = 0;
+                        }
+                        KeyCode::End => {
+                            cursor_pos = current_input.len();
+                        }
+                        KeyCode::Char(c) => {
+                            // Insert character at cursor position
+                            current_input.insert(cursor_pos, c);
+                            cursor_pos += 1;
+
+                            // Auto-complete at 5 characters if unique
+                            if current_input.len() >= 5 {
+                                if let Some(word) = encoder.auto_complete_at_five(&current_input) {
+                                    current_input = word;
+                                    cursor_pos = current_input.len();
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
             }
         }
-
-        if !current_input.is_empty() {
-            print!(" Typing: {current_input}");
-        }
-
-        print!("\n4wn> ");
-        io::stdout().flush().unwrap();
-
-        let mut line = String::new();
-        if io::stdin().read_line(&mut line).is_err() {
-            break;
-        }
-
-        let input = line.trim();
-
-        // Handle commands
-        match input.to_lowercase().as_str() {
-            "quit" | "exit" => {
-                println!("Goodbye! 👋");
-                break;
-            }
-            "help" => {
-                show_help();
-                continue;
-            }
-            "clear" => {
-                current_words.clear();
-                current_input.clear();
-                println!("Cleared current input.");
-                continue;
-            }
-            "" => continue,
-            _ => {}
-        }
-
-        // Try processing as complete input first
-        if let Ok(result) = process_complete_input(encoder, input, verbose) {
-            if let Some(output) = result {
-                println!("→ {output}");
-            }
-            continue;
-        }
-
-        // Handle progressive word building
-        handle_progressive_input(encoder, input, &mut current_input, &mut current_words);
     }
+
+    // Clear screen and show goodbye
+    execute!(
+        stdout,
+        terminal::Clear(ClearType::All),
+        cursor::MoveTo(0, 0),
+        Print(
+            "Goodbye! 👋
+"
+        )
+    )
+    .map_err(|e| FourWordError::InvalidInput(format!("Terminal error: {e}")))?;
 
     Ok(())
 }
 
+/// Render the TUI interface
+fn render_ui(
+    stdout: &mut io::Stdout,
+    current_input: &str,
+    cursor_pos: usize,
+    completed_words: &[String],
+    encoder: &FourWordAdaptiveEncoder,
+    _verbose: bool,
+) -> Result<()> {
+    // Move to start of input area (line 5)
+    queue!(stdout, cursor::MoveTo(0, 4))?;
+
+    // Clear from cursor to end of screen
+    queue!(stdout, terminal::Clear(ClearType::FromCursorDown))?;
+
+    // Show completed words
+    if !completed_words.is_empty() {
+        queue!(
+            stdout,
+            SetForegroundColor(Color::Green),
+            Print("Words: "),
+            ResetColor,
+            Print(&completed_words.join(" ")),
+            Print(&format!(" ({}/4)", completed_words.len())),
+            Print(
+                "
+
+"
+            )
+        )?;
+    }
+
+    // Show current input prompt
+    queue!(stdout, Print("4wn> "), Print(current_input))?;
+
+    // Show hints if input is 3+ characters
+    if current_input.len() >= 3 {
+        let hints = encoder.get_word_hints(current_input);
+        if !hints.is_empty() {
+            queue!(
+                stdout,
+                Print(
+                    "
+
+"
+                )
+            )?;
+
+            if hints.len() == 1 {
+                queue!(
+                    stdout,
+                    SetForegroundColor(Color::Green),
+                    Print("✓ Complete match: "),
+                    ResetColor,
+                    Print(&hints[0])
+                )?;
+            } else {
+                queue!(
+                    stdout,
+                    SetForegroundColor(Color::Yellow),
+                    Print(&format!("💡 {} matches: ", hints.len())),
+                    ResetColor
+                )?;
+
+                // Show up to 5 hints
+                for (i, hint) in hints.iter().take(5).enumerate() {
+                    if i > 0 {
+                        queue!(stdout, Print(", "))?;
+                    }
+                    queue!(stdout, Print(hint))?;
+                }
+                if hints.len() > 5 {
+                    queue!(stdout, Print(&format!(" (+{} more)", hints.len() - 5)))?;
+                }
+            }
+
+            // Show auto-complete message at 5+ chars
+            if current_input.len() >= 5 && hints.len() == 1 {
+                queue!(
+                    stdout,
+                    Print(
+                        "
+"
+                    ),
+                    SetForegroundColor(Color::Cyan),
+                    Print("   Press any key to auto-complete"),
+                    ResetColor
+                )?;
+            }
+        } else {
+            queue!(
+                stdout,
+                Print(
+                    "
+
+"
+                ),
+                SetForegroundColor(Color::Red),
+                Print("❌ No matches found"),
+                ResetColor
+            )?;
+        }
+    }
+
+    // Position cursor at input location
+    let cursor_col = 5 + cursor_pos; // "4wn> " = 5 chars
+    queue!(
+        stdout,
+        cursor::MoveTo(
+            cursor_col as u16,
+            4 + if completed_words.is_empty() { 0 } else { 2 }
+        )
+    )?;
+
+    stdout
+        .flush()
+        .map_err(|e| FourWordError::InvalidInput(format!("Flush error: {e}")))?;
+    Ok(())
+}
+
+/// Handle Enter key press
+fn handle_enter(
+    input: &str,
+    completed_words: &mut Vec<String>,
+    encoder: &FourWordAdaptiveEncoder,
+    _verbose: bool,
+) -> Result<bool> {
+    let input = input.trim();
+
+    // Handle special commands
+    match input.to_lowercase().as_str() {
+        "quit" | "exit" => return Ok(true),
+        "clear" => {
+            completed_words.clear();
+            return Ok(false);
+        }
+        "" => return Ok(false),
+        _ => {}
+    }
+
+    // Try to process as complete address
+    if input.contains(':') || input.contains('[') || input.parse::<std::net::IpAddr>().is_ok() {
+        match encoder.encode(input) {
+            Ok(encoded) => {
+                println!(
+                    "
+🌐 {input} → {encoded}
+"
+                );
+                return Ok(false);
+            }
+            Err(_) => {} // Fall through to word processing
+        }
+    }
+
+    // Try to process as complete word sequence
+    if looks_like_words(input) {
+        match encoder.decode(input) {
+            Ok(decoded) => {
+                println!(
+                    "
+🌐 {input} → {decoded}
+"
+                );
+                return Ok(false);
+            }
+            Err(_) => {} // Fall through to word building
+        }
+    }
+
+    // Add as word to completion
+    if encoder.is_valid_prefix(input) {
+        let hints = encoder.get_word_hints(input);
+        if hints.len() == 1 {
+            completed_words.push(hints[0].clone());
+
+            // Check if we have 4 words (complete IPv4)
+            if completed_words.len() == 4 {
+                let word_str = completed_words.join(" ");
+                match encoder.decode(&word_str) {
+                    Ok(decoded) => {
+                        println!(
+                            "
+✅ Complete! {word_str} → {decoded}
+"
+                        );
+                        completed_words.clear();
+                    }
+                    Err(_) => {
+                        println!(
+                            "
+❌ Invalid word combination
+"
+                        );
+                        completed_words.clear();
+                    }
+                }
+            }
+        } else {
+            println!(
+                "
+❌ Ambiguous input: {} matches found
+",
+                hints.len()
+            );
+        }
+    } else {
+        println!(
+            "
+❌ Invalid word or prefix
+"
+        );
+    }
+
+    Ok(false)
+}
+
+/// Get the best completion for current input
+fn get_best_completion(encoder: &FourWordAdaptiveEncoder, input: &str) -> Option<String> {
+    if input.len() >= 3 {
+        let hints = encoder.get_word_hints(input);
+        if hints.len() == 1 {
+            Some(hints[0].clone())
+        } else if !hints.is_empty() {
+            // Return the shortest match
+            hints.into_iter().min_by_key(|s| s.len())
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
 /// Process input as complete IP address or word sequence
+#[allow(dead_code)]
 fn process_complete_input(
     encoder: &FourWordAdaptiveEncoder,
     input: &str,
@@ -291,13 +626,14 @@ fn process_complete_input(
         }
     } else {
         // Not complete input
-        Err(four_word_networking::FourWordError::InvalidInput(
+        Err(FourWordError::InvalidInput(
             "Not complete input".to_string(),
         ))
     }
 }
 
 /// Handle progressive input with autocomplete
+#[allow(dead_code)]
 fn handle_progressive_input(
     encoder: &FourWordAdaptiveEncoder,
     input: &str,
@@ -338,6 +674,7 @@ fn handle_progressive_input(
 }
 
 /// Try to complete a partial word
+#[allow(dead_code)]
 fn try_complete_word(encoder: &FourWordAdaptiveEncoder, partial: &str) -> Option<String> {
     // Auto-complete at 5 characters
     if partial.len() >= 5 {
@@ -354,6 +691,7 @@ fn try_complete_word(encoder: &FourWordAdaptiveEncoder, partial: &str) -> Option
 }
 
 /// Show progressive hints for current input
+#[allow(dead_code)]
 fn show_progressive_hints(encoder: &FourWordAdaptiveEncoder, input: &str) {
     if input.len() < 3 {
         return;
@@ -416,6 +754,7 @@ fn show_validation_results(encoder: &FourWordAdaptiveEncoder, partial: &str) -> 
 }
 
 /// Show help information
+#[allow(dead_code)]
 fn show_help() {
     println!("🌐 Four-Word Networking Help");
     println!();

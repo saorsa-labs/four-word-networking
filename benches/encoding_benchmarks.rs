@@ -1,5 +1,5 @@
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
-use three_word_networking::{four_word_encoder::FourWordDictionary, *};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use four_word_networking::*;
 // use std::net::{SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
@@ -81,6 +81,9 @@ fn bench_round_trip(c: &mut Criterion) {
 
 // Additional comprehensive benchmarks
 
+// Dictionary benchmarks disabled - FourWordDictionary no longer exists
+// TODO: Update to use Dictionary4K when needed
+/*
 fn bench_dictionary_performance(c: &mut Criterion) {
     let dict = FourWordDictionary::new().unwrap();
 
@@ -101,6 +104,7 @@ fn bench_dictionary_performance(c: &mut Criterion) {
         })
     });
 }
+*/
 
 fn bench_compression_performance(c: &mut Criterion) {
     let mut group = c.benchmark_group("compression");
@@ -164,11 +168,13 @@ fn bench_memory_usage(c: &mut Criterion) {
         })
     });
 
-    group.bench_function("dictionary_creation", |b| {
+    // Dictionary creation benchmark disabled - FourWordDictionary no longer exists
+    // TODO: Update to use Dictionary4K when needed
+    /*group.bench_function("dictionary_creation", |b| {
         b.iter(|| {
             let _ = FourWordDictionary::new();
         })
-    });
+    });*/
 
     group.finish();
 }
@@ -210,7 +216,7 @@ fn bench_concurrent_access(c: &mut Criterion) {
                 .map(|i| {
                     let encoder = Arc::clone(&encoder);
                     thread::spawn(move || {
-                        let addr = format!("192.168.1.{}", i);
+                        let addr = format!("192.168.1.{i}");
                         let _ = encoder.encode(black_box(&addr));
                     })
                 })
@@ -326,7 +332,7 @@ criterion_group!(
         bench_ipv6_encoding,
         bench_decoding,
         bench_round_trip,
-        bench_dictionary_performance,
+        // bench_dictionary_performance, // Disabled - FourWordDictionary no longer exists
         bench_compression_performance,
         bench_batch_processing,
         bench_memory_usage,
