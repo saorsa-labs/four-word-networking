@@ -152,6 +152,11 @@ impl Dictionary4K {
             None
         }
     }
+
+    /// Get all words in the dictionary
+    pub fn get_all_words(&self) -> Vec<String> {
+        self.words.clone()
+    }
 }
 
 #[cfg(test)]

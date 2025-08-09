@@ -36,14 +36,6 @@ struct Cli {
     /// Output format for scripting (minimal output)
     #[arg(short, long)]
     quiet: bool,
-
-    /// Generate random words from the dictionary
-    #[arg(short, long, num_args = 0..=1, default_missing_value = "4", value_name = "COUNT")]
-    random: Option<usize>,
-
-    /// Test if words are valid in the dictionary
-    #[arg(short = 't', long)]
-    test: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,21 +57,6 @@ fn main() {
 
 fn run(cli: Cli) -> Result<()> {
     let encoder = FourWordAdaptiveEncoder::new()?;
-
-    // Handle --random flag
-    if let Some(count) = cli.random {
-        return generate_random_words(&encoder, count, cli.verbose);
-    }
-
-    // Handle --test flag
-    if cli.test {
-        if cli.input.is_empty() {
-            eprintln!("Error: --test requires words to validate");
-            eprintln!("Usage: 4wn --test word1 word2 word3 word4");
-            process::exit(1);
-        }
-        return test_words(&encoder, &cli.input, cli.verbose);
-    }
 
     // If no input provided, start interactive mode
     if cli.input.is_empty() {
@@ -188,106 +165,6 @@ fn decode_words(
         println!("Address: {address}");
     } else {
         println!("{address}");
-    }
-
-    Ok(())
-}
-
-/// Generate random words from the dictionary
-fn generate_random_words(
-    encoder: &FourWordAdaptiveEncoder,
-    count: usize,
-    verbose: bool,
-) -> Result<()> {
-    let words = encoder.get_random_words(count);
-
-    if verbose {
-        println!("Generated {count} random words from dictionary:");
-        println!("Words: {}", words.join(" "));
-
-        // Try to decode if it's exactly 4, 6, 9, or 12 words
-        if count == 4 || count == 6 || count == 9 || count == 12 {
-            if let Ok(decoded) = encoder.decode(&words.join(" ")) {
-                println!("Decoded to: {decoded}");
-            } else {
-                println!("(These random words don't form a valid address)");
-            }
-        }
-    } else {
-        println!("{}", words.join(" "));
-    }
-
-    Ok(())
-}
-
-/// Test if words are valid in the dictionary
-fn test_words(encoder: &FourWordAdaptiveEncoder, words: &[String], verbose: bool) -> Result<()> {
-    let mut all_valid = true;
-    let mut results = Vec::new();
-
-    for word in words {
-        let word = word.trim().to_lowercase();
-        let is_valid = encoder.is_valid_word(&word);
-        results.push((word.clone(), is_valid));
-        if !is_valid {
-            all_valid = false;
-        }
-    }
-
-    if verbose {
-        println!("Word Validation Results:");
-        println!("━━━━━━━━━━━━━━━━━━━━━━━━");
-        for (word, is_valid) in &results {
-            let status = if *is_valid {
-                "✅ Valid"
-            } else {
-                "❌ Invalid"
-            };
-            println!("{word}: {status}");
-
-            // If invalid, show suggestions
-            if !is_valid && !word.is_empty() {
-                let hints = encoder.get_word_hints(word);
-                if !hints.is_empty() {
-                    println!(
-                        "  Suggestions: {}",
-                        hints.iter().take(5).cloned().collect::<Vec<_>>().join(", ")
-                    );
-                }
-            }
-        }
-        println!("━━━━━━━━━━━━━━━━━━━━━━━━");
-        println!(
-            "Overall: {}",
-            if all_valid {
-                "All words are valid ✅"
-            } else {
-                "Some words are invalid ❌"
-            }
-        );
-
-        // If all valid and we have 4, 6, 9, or 12 words, try to decode
-        let word_count = results.len();
-        if all_valid && (word_count == 4 || word_count == 6 || word_count == 9 || word_count == 12)
-        {
-            let word_string = words.join(" ");
-            if let Ok(decoded) = encoder.decode(&word_string) {
-                println!("Decoded address: {decoded}");
-            }
-        }
-    } else {
-        // Simple output for scripting
-        if all_valid {
-            println!("valid");
-            process::exit(0);
-        } else {
-            for (word, is_valid) in &results {
-                if !is_valid {
-                    eprintln!("Invalid word: {word}");
-                }
-            }
-            process::exit(1);
-        }
     }
 
     Ok(())

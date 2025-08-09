@@ -1,0 +1,21 @@
+[package]
+name = "4wn"
+version = "2.4.0"
+edition = "2024"
+authors = ["David Irvine <david.irvine@autonomi.com>"]
+description = "4wn CLI binary - Interactive IP address to words converter with progressive autocomplete"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/dirvine/four-word-networking"
+documentation = "https://docs.rs/four-word-networking"
+homepage = "https://github.com/dirvine/four-word-networking"
+readme = "README.md"
+keywords = ["networking", "ip-address", "human-readable", "cli", "interactive"]
+categories = ["command-line-utilities", "network-programming"]
+
+[[bin]]
+name = "4wn"
+path = "src/main.rs"
+
+[dependencies]
+four-word-networking = "2.4.0"
+clap = { version = "4.0", features = ["derive"] }

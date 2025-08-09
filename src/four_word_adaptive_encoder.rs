@@ -413,6 +413,96 @@ impl FourWordAdaptiveEncoder {
 
         (count, unique_at_five)
     }
+
+    /// Generate random words from the dictionary
+    ///
+    /// Returns a vector of randomly selected words from the 4096-word dictionary.
+    /// These are just random dictionary words, NOT necessarily valid IP encodings.
+    /// Useful for generating passphrases, test data, or other applications that
+    /// need random English words.
+    ///
+    /// Each word is independently selected, so duplicates are possible.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - The number of random words to generate
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use four_word_networking::FourWordAdaptiveEncoder;
+    ///
+    /// let encoder = FourWordAdaptiveEncoder::new().unwrap();
+    ///
+    /// // Generate 4 random words (not necessarily a valid IP encoding)
+    /// let words = encoder.get_random_words(4);
+    /// assert_eq!(words.len(), 4);
+    ///
+    /// // Generate any number of random words
+    /// let passphrase = encoder.get_random_words(6);
+    /// println!("Random passphrase: {}", passphrase.join("-"));
+    ///
+    /// // All generated words are valid dictionary words
+    /// for word in &words {
+    ///     assert!(encoder.is_valid_word(word));
+    /// }
+    /// ```
+    pub fn get_random_words(&self, count: usize) -> Vec<String> {
+        use rand::seq::SliceRandom;
+        let mut rng = rand::thread_rng();
+
+        // Get all words from dictionary
+        let all_words = DICTIONARY.get_all_words();
+
+        // Sample random words
+        let mut result = Vec::new();
+        for _ in 0..count {
+            if let Some(word) = all_words.choose(&mut rng) {
+                result.push(word.clone());
+            }
+        }
+
+        result
+    }
+
+    /// Check if a word is valid in the dictionary
+    ///
+    /// Validates whether a given word exists in the 4096-word dictionary.
+    /// The check is case-insensitive - uppercase and mixed-case words are
+    /// automatically converted to lowercase before validation.
+    ///
+    /// # Arguments
+    ///
+    /// * `word` - The word to validate
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the word exists in the dictionary
+    /// * `false` if the word is not found or contains invalid characters
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use four_word_networking::FourWordAdaptiveEncoder;
+    ///
+    /// let encoder = FourWordAdaptiveEncoder::new().unwrap();
+    ///
+    /// // Valid words return true
+    /// assert!(encoder.is_valid_word("about"));
+    /// assert!(encoder.is_valid_word("a"));  // Single-letter words are valid
+    ///
+    /// // Case-insensitive validation
+    /// assert!(encoder.is_valid_word("About"));
+    /// assert!(encoder.is_valid_word("ABOUT"));
+    ///
+    /// // Invalid words return false
+    /// assert!(!encoder.is_valid_word("xyz123"));
+    /// assert!(!encoder.is_valid_word("not-a-word"));
+    /// assert!(!encoder.is_valid_word(""));
+    /// ```
+    pub fn is_valid_word(&self, word: &str) -> bool {
+        DICTIONARY.get_index(word).is_some()
+    }
 }
 
 impl Default for FourWordAdaptiveEncoder {
@@ -478,5 +568,185 @@ mod tests {
         let analysis = encoder.analyze("[::1]:443").unwrap();
         assert!(analysis.contains("IPv6"));
         assert!(analysis.contains("words"));
+    }
+
+    #[test]
+    fn test_get_random_words_basic() {
+        let encoder = FourWordAdaptiveEncoder::new().unwrap();
+
+        // Test requesting different counts
+        let words_4 = encoder.get_random_words(4);
+        assert_eq!(words_4.len(), 4);
+
+        let words_1 = encoder.get_random_words(1);
+        assert_eq!(words_1.len(), 1);
+
+        let words_10 = encoder.get_random_words(10);
+        assert_eq!(words_10.len(), 10);
+
+        // Test edge cases
+        let words_0 = encoder.get_random_words(0);
+        assert_eq!(words_0.len(), 0);
+
+        let words_100 = encoder.get_random_words(100);
+        assert_eq!(words_100.len(), 100);
+    }
+
+    #[test]
+    fn test_random_words_are_valid() {
+        let encoder = FourWordAdaptiveEncoder::new().unwrap();
+
+        // Generate random words and verify they're all valid
+        let words = encoder.get_random_words(50);
+        for word in &words {
+            assert!(
+                encoder.is_valid_word(word),
+                "Random word '{word}' should be valid"
+            );
+        }
+    }
+
+    #[test]
+    fn test_random_words_randomness() {
+        let encoder = FourWordAdaptiveEncoder::new().unwrap();
+
+        // Generate multiple sets and check they're different
+        let set1 = encoder.get_random_words(10);
+        let set2 = encoder.get_random_words(10);
+        let set3 = encoder.get_random_words(10);
+
+        // At least one set should be different from another
+        // (statistically, they should all be different)
+        assert!(
+            set1 != set2 || set2 != set3 || set1 != set3,
+            "Random word sets should vary"
+        );
+    }
+
+    #[test]
+    fn test_is_valid_word_basic() {
+        let encoder = FourWordAdaptiveEncoder::new().unwrap();
+
+        // Test with known valid words from the dictionary
+        assert!(encoder.is_valid_word("a"));
+        assert!(encoder.is_valid_word("about"));
+
+        // Test case insensitivity
+        assert!(encoder.is_valid_word("About"));
+        assert!(encoder.is_valid_word("ABOUT"));
+
+        // Test invalid words
+        assert!(!encoder.is_valid_word("xyz123"));
+        assert!(!encoder.is_valid_word("notaword"));
+        assert!(!encoder.is_valid_word(""));
+        assert!(!encoder.is_valid_word("123"));
+        assert!(!encoder.is_valid_word("test-word"));
+    }
+
+    #[test]
+    fn test_is_valid_word_all_dictionary_words() {
+        let encoder = FourWordAdaptiveEncoder::new().unwrap();
+
+        // Get all dictionary words and verify each is valid
+        use crate::dictionary4k::DICTIONARY;
+        for i in 0..4096 {
+            if let Some(word) = DICTIONARY.get_word(i) {
+                assert!(
+                    encoder.is_valid_word(word),
+                    "Dictionary word '{word}' at index {i} should be valid"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_is_valid_word_with_special_chars() {
+        let encoder = FourWordAdaptiveEncoder::new().unwrap();
+
+        // Words with special characters should be invalid
+        assert!(!encoder.is_valid_word("hello-world"));
+        assert!(!encoder.is_valid_word("hello_world"));
+        assert!(!encoder.is_valid_word("hello.world"));
+        assert!(!encoder.is_valid_word("hello world"));
+        assert!(!encoder.is_valid_word("hello@world"));
+        assert!(!encoder.is_valid_word("hello!"));
+    }
+
+    #[test]
+    fn test_random_words_are_just_dictionary_words() {
+        let encoder = FourWordAdaptiveEncoder::new().unwrap();
+
+        // get_random_words() should return random dictionary words
+        // These are NOT necessarily valid IP encodings - just random words for other uses
+        // like generating passphrases, test data, etc.
+
+        let words_4 = encoder.get_random_words(4);
+        assert_eq!(words_4.len(), 4);
+
+        // Verify they're all from the dictionary
+        for word in &words_4 {
+            assert!(encoder.is_valid_word(word));
+        }
+
+        // Can generate any number of random words
+        let words_7 = encoder.get_random_words(7);
+        assert_eq!(words_7.len(), 7);
+
+        let words_20 = encoder.get_random_words(20);
+        assert_eq!(words_20.len(), 20);
+
+        // These random words are NOT meant to be decoded as IP addresses
+        // They're just random dictionary words for general use
+    }
+
+    #[test]
+    fn test_is_valid_word_edge_cases() {
+        let encoder = FourWordAdaptiveEncoder::new().unwrap();
+
+        // Test single-letter words (should have some valid ones like "a", "i")
+        assert!(encoder.is_valid_word("a"));
+
+        // Test very long invalid strings
+        let long_word = "a".repeat(100);
+        assert!(!encoder.is_valid_word(&long_word));
+
+        // Test whitespace
+        assert!(!encoder.is_valid_word(" "));
+        assert!(!encoder.is_valid_word("\t"));
+        assert!(!encoder.is_valid_word("\n"));
+
+        // Test words with leading/trailing spaces (should work due to lowercase conversion)
+        // The dictionary lookup uses to_lowercase which doesn't trim
+        assert!(!encoder.is_valid_word(" about "));
+        assert!(!encoder.is_valid_word("about "));
+        assert!(!encoder.is_valid_word(" about"));
+    }
+
+    #[test]
+    fn test_random_words_distribution() {
+        let encoder = FourWordAdaptiveEncoder::new().unwrap();
+        use std::collections::HashSet;
+
+        // Generate a large sample and check distribution
+        let sample_size = 1000;
+        let words = encoder.get_random_words(sample_size);
+
+        // Convert to set to count unique words
+        let unique_words: HashSet<_> = words.iter().collect();
+
+        // We should see a reasonable variety of words
+        // With 4096 words and 1000 samples, we expect to see several hundred unique words
+        assert!(
+            unique_words.len() > 100,
+            "Random selection should produce variety, got {} unique words from {} samples",
+            unique_words.len(),
+            sample_size
+        );
+
+        // But not all unique (that would suggest non-random behavior)
+        assert!(
+            unique_words.len() < sample_size,
+            "Some repetition expected in random selection"
+        );
     }
 }

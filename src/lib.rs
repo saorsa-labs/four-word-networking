@@ -14,8 +14,9 @@
 //! - **Visual Distinction**: Different formatting for IPv4 vs IPv6 addresses
 //! - **Universal**: Works with any valid IP address format
 //!
-//! ## Example
+//! ## Examples
 //!
+//! ### Basic Encoding/Decoding
 //! ```rust
 //! use four_word_networking::FourWordAdaptiveEncoder;
 //!
@@ -29,6 +30,45 @@
 //! // Decode back to exact address
 //! let decoded = encoder.decode(&words)?;
 //! assert_eq!(address, decoded);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! ### Random Word Generation
+//! ```rust
+//! use four_word_networking::FourWordAdaptiveEncoder;
+//!
+//! let encoder = FourWordAdaptiveEncoder::new()?;
+//!
+//! // Generate random dictionary words (NOT IP encodings)
+//! // Useful for passphrases, test data, or any application needing random words
+//! let random_words = encoder.get_random_words(4);
+//! println!("Random words: {}", random_words.join(" "));
+//!
+//! // Generate a 6-word passphrase
+//! let passphrase = encoder.get_random_words(6);
+//! println!("Passphrase: {}", passphrase.join("-"));
+//!
+//! // All generated words are valid dictionary words
+//! for word in &random_words {
+//!     assert!(encoder.is_valid_word(word));
+//! }
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! ### Word Validation
+//! ```rust
+//! use four_word_networking::FourWordAdaptiveEncoder;
+//!
+//! let encoder = FourWordAdaptiveEncoder::new()?;
+//!
+//! // Validate user input words
+//! assert!(encoder.is_valid_word("ocean"));
+//! assert!(encoder.is_valid_word("OCEAN")); // Case-insensitive
+//! assert!(!encoder.is_valid_word("xyz123")); // Invalid word
+//!
+//! // Get word suggestions for partial input
+//! let hints = encoder.get_word_hints("oce");
+//! assert!(hints.contains(&"ocean".to_string()));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
