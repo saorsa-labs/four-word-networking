@@ -86,6 +86,7 @@ pub mod pure_ip_compression;
 // Ultra modules removed - used outdated 3-word system
 pub mod universal_ip_compression;
 pub mod validation;
+pub mod identity_encoder;
 
 #[cfg(test)]
 mod property_tests;
@@ -101,6 +102,7 @@ pub use ipv6_pattern_feistel::{IPv6PatternFeistel, IPv6PatternId};
 pub use ipv6_perfect_patterns::{IPv6Pattern, IPv6PatternDetector};
 pub use pure_ip_compression::{MathematicalCompressor, PureIpCompressor};
 pub use universal_ip_compression::UniversalIpCompressor;
+pub use identity_encoder::{IdentityEncoder, IdentityWords};
 
 /// Version of the four-word networking library
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
