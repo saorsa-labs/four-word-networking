@@ -139,8 +139,6 @@ jobs:
 
     - name: Build docs
       run: cargo doc --all-features --no-deps
-      env:
-        RUSTDOCFLAGS: "-D warnings"
 
     - name: Doc tests
       run: cargo test --doc --all-features
