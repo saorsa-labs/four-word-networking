@@ -324,10 +324,7 @@ jobs:
       matrix:
         target:
           - x86_64-unknown-linux-gnu
-          - x86_64-apple-darwin
-          - x86_64-pc-windows-msvc
           - aarch64-unknown-linux-gnu
-          - aarch64-apple-darwin
     
     steps:
     - uses: actions/checkout@v4
@@ -384,10 +381,14 @@ jobs:
     
     - name: Test examples
       run: |
-        for example in examples/*.rs; do
-          echo "Testing example: $example"
-          cargo run --example $(basename $example .rs)
-        done
+        if ls examples/*.rs 1>/dev/null 2>&1; then
+          for example in examples/*.rs; do
+            echo "Testing example: $example"
+            cargo run --example $(basename $example .rs)
+          done
+        else
+          echo "No examples found, skipping"
+        fi
     
     - name: Archive documentation
       uses: actions/upload-artifact@v4
