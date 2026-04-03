@@ -1,9 +1,11 @@
 //! 4wn - Four-Word Networking CLI with Improved Interactive Mode
 //!
-//! Much better UX with real-time conversion and intelligent input detection
+//! Much better UX with real-time conversion and intelligent input detection.
+//! Includes identity encoding for x0x agent/user hashes.
 
-use clap::Parser;
-use four_word_networking::{FourWordAdaptiveEncoder, FourWordError, Result};
+use clap::{Parser, Subcommand};
+use four_word_networking::{FourWordAdaptiveEncoder, FourWordError, IdentityEncoder, Result};
+use sha2::{Digest, Sha256};
 use std::io::{self, Write};
 use std::process;
 
@@ -19,12 +21,16 @@ use crossterm::{
 #[derive(Parser)]
 #[command(
     name = "4wn",
-    about = "Four-Word Networking - Smart IP/word converter",
+    about = "Four-Word Networking - Smart IP/word converter & identity encoder",
     long_about = "Smart interactive CLI that auto-detects whether you're typing an IP address or words.\n\
-                  Just start typing - it figures out what you mean and shows live conversion.",
+                  Just start typing - it figures out what you mean and shows live conversion.\n\n\
+                  Use '4wn identity' to encode x0x agent/user hashes into speakable words.",
     version
 )]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Input to convert (IP:port or words) - if provided, performs direct conversion
     /// If no input provided, starts interactive mode
     input: Vec<String>,
@@ -46,6 +52,39 @@ struct Cli {
     test: bool,
 }
 
+#[derive(Subcommand)]
+enum Commands {
+    /// Encode x0x agent/user hashes into speakable identity words
+    ///
+    /// Converts 256-bit cryptographic hashes (SHA-256 of ML-DSA-65 public keys)
+    /// into memorable four-word names. Supports plain text hashing too.
+    #[command(alias = "id")]
+    Identity {
+        /// Hex-encoded hash, or plain text to hash (auto-detected)
+        input: Option<String>,
+
+        /// Decode identity words back to a 48-bit hex prefix
+        #[arg(short, long)]
+        decode: bool,
+
+        /// Create full 8-word identity: agent @ user
+        /// Provide the user hex hash (or text) as this argument
+        #[arg(short, long, value_name = "USER_HEX")]
+        full: Option<String>,
+
+        /// Show detailed information
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Output format for scripting (minimal output)
+        #[arg(short, long)]
+        quiet: bool,
+
+        /// Extra words (for decode mode with multiple word arguments)
+        extra: Vec<String>,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum InputType {
     IpAddress,
@@ -64,6 +103,19 @@ fn main() {
 }
 
 fn run(cli: Cli) -> Result<()> {
+    // Handle identity subcommand
+    if let Some(Commands::Identity {
+        input,
+        decode,
+        full,
+        verbose,
+        quiet,
+        extra,
+    }) = cli.command
+    {
+        return run_identity(input, decode, full, verbose, quiet, extra);
+    }
+
     let encoder = FourWordAdaptiveEncoder::new()?;
 
     // Handle --random flag
@@ -100,6 +152,154 @@ fn run(cli: Cli) -> Result<()> {
     } else {
         decode_words(&encoder, &input, cli.verbose, cli.quiet)
     }
+}
+
+// ─── Identity subcommand ─────────────────────────────────────────────
+
+/// Detect whether a string is a hex-encoded hash (even number of hex chars, ≥12).
+fn looks_like_hex(s: &str) -> bool {
+    let trimmed = s.trim();
+    trimmed.len() >= 12 && trimmed.len() % 2 == 0 && trimmed.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Hash plain text to SHA-256, returning the hex string.
+fn sha256_hex(text: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(text.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Run the identity subcommand.
+fn run_identity(
+    input: Option<String>,
+    decode: bool,
+    full: Option<String>,
+    verbose: bool,
+    quiet: bool,
+    extra: Vec<String>,
+) -> Result<()> {
+    let encoder = IdentityEncoder::new();
+
+    // ── Decode mode: words → hex prefix ──
+    if decode {
+        // Collect all words from input + extra args
+        let mut all_words = Vec::new();
+        if let Some(ref inp) = input {
+            all_words.extend(inp.split_whitespace().map(String::from));
+        }
+        all_words.extend(extra);
+
+        let word_str = all_words.join(" ");
+
+        if word_str.contains('@') {
+            // Full identity decode: "w1 w2 w3 w4 @ w5 w6 w7 w8"
+            let parsed = encoder.parse(&word_str)?;
+            let agent_prefix = encoder.decode_to_prefix(&parsed.agent_words().join(" "))?;
+            let user_prefix =
+                encoder.decode_to_prefix(&parsed.user_words().unwrap().join(" "))?;
+
+            if quiet {
+                println!("{} {}", hex::encode(agent_prefix), hex::encode(user_prefix));
+            } else if verbose {
+                println!("Identity:     {}", parsed);
+                println!("Agent prefix: {} (48 bits)", hex::encode(agent_prefix));
+                println!("User prefix:  {} (48 bits)", hex::encode(user_prefix));
+            } else {
+                println!("Agent: {}", hex::encode(agent_prefix));
+                println!("User:  {}", hex::encode(user_prefix));
+            }
+        } else {
+            // Agent-only decode: "w1 w2 w3 w4"
+            if all_words.len() != 4 {
+                return Err(FourWordError::InvalidInput(format!(
+                    "Decode expects 4 words (or 8 with @), got {}",
+                    all_words.len()
+                )));
+            }
+            let prefix = encoder.decode_to_prefix(&word_str)?;
+
+            if quiet {
+                println!("{}", hex::encode(prefix));
+            } else if verbose {
+                println!("Words:  {}", word_str);
+                println!("Prefix: {} (48 bits)", hex::encode(prefix));
+                println!(
+                    "Use this prefix to search for the agent on the gossip network."
+                );
+            } else {
+                println!("{}", hex::encode(prefix));
+            }
+        }
+        return Ok(());
+    }
+
+    // ── Encode mode: hash/text → words ──
+    let input_str = input.ok_or_else(|| {
+        FourWordError::InvalidInput(
+            "Usage: 4wn identity <hex-hash-or-text> [--full <user-hex-or-text>]".to_string(),
+        )
+    })?;
+
+    // Determine if input is hex or plain text
+    let agent_hex = if looks_like_hex(&input_str) {
+        input_str.clone()
+    } else {
+        let h = sha256_hex(&input_str);
+        if verbose {
+            println!("SHA-256(\"{}\") = {}", input_str, h);
+        }
+        h
+    };
+
+    if let Some(user_input) = full {
+        // Full identity: agent @ user
+        let user_hex = if looks_like_hex(&user_input) {
+            user_input.clone()
+        } else {
+            let h = sha256_hex(&user_input);
+            if verbose {
+                println!("SHA-256(\"{}\") = {}", user_input, h);
+            }
+            h
+        };
+
+        let identity = encoder.encode_hex_full(&agent_hex, &user_hex)?;
+
+        if quiet {
+            println!("{}", identity);
+        } else if verbose {
+            println!("Agent hash: {}…", &agent_hex[..16]);
+            println!("User hash:  {}…", &user_hex[..16]);
+            println!("Identity:   {}", identity);
+            println!();
+            println!("  Agent words: {}", identity.agent_words().join(" "));
+            println!(
+                "  User words:  {}",
+                identity.user_words().unwrap().join(" ")
+            );
+            println!(
+                "  Family name: {} (shared by all agents of this user)",
+                identity.user_words().unwrap().join(" ")
+            );
+        } else {
+            println!("{}", identity);
+        }
+    } else {
+        // Agent-only identity
+        let identity = encoder.encode_hex(&agent_hex)?;
+
+        if quiet {
+            println!("{}", identity);
+        } else if verbose {
+            println!("Hash:     {}…", &agent_hex[..16]);
+            println!("Identity: {}", identity);
+            println!("Type:     Autonomous agent (4 words, no human backing)");
+        } else {
+            println!("{}", identity);
+        }
+    }
+
+    Ok(())
 }
 
 /// Improved IP detection
