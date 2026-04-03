@@ -60,11 +60,10 @@ proptest! {
         let ip = Ipv4Addr::new(a, b, c, d);
         let ip_str = ip.to_string();
 
-        if let Ok(encoded1) = encode_ip_address(&ip_str) {
-            if let Ok(encoded2) = encode_ip_address(&ip_str) {
+        if let Ok(encoded1) = encode_ip_address(&ip_str)
+            && let Ok(encoded2) = encode_ip_address(&ip_str) {
                 prop_assert_eq!(encoded1, encoded2, "Encoding should be deterministic");
             }
-        }
     }
 }
 
@@ -78,8 +77,8 @@ proptest! {
         let ip2 = Ipv4Addr::new(a2, b2, c2, d2);
 
         // Only test if IPs are different
-        if ip1 != ip2 {
-            if let (Ok(encoded1), Ok(encoded2)) = (
+        if ip1 != ip2
+            && let (Ok(encoded1), Ok(encoded2)) = (
                 encode_ip_address(&ip1.to_string()),
                 encode_ip_address(&ip2.to_string())
             ) {
@@ -87,7 +86,6 @@ proptest! {
                     "Different IPs should produce different encodings: {} vs {}",
                     ip1, ip2);
             }
-        }
     }
 }
 
@@ -101,11 +99,10 @@ proptest! {
         let socket = SocketAddr::from((ip, port));
         let socket_str = socket.to_string();
 
-        if let Ok(encoded) = encode_socket_address(&socket_str) {
-            if let Ok(decoded) = decode_socket_address(&encoded) {
+        if let Ok(encoded) = encode_socket_address(&socket_str)
+            && let Ok(decoded) = decode_socket_address(&encoded) {
                 prop_assert_eq!(socket_str, decoded, "Socket address roundtrip failed");
             }
-        }
     }
 }
 
@@ -126,8 +123,8 @@ proptest! {
             return Ok(());
         }
 
-        if let Ok(encoded) = encode_ip_address(&ip_str) {
-            if let Ok(decoded) = decode_words(&encoded) {
+        if let Ok(encoded) = encode_ip_address(&ip_str)
+            && let Ok(decoded) = decode_words(&encoded) {
                 // With smart port handling, IPv6 addresses without ports should roundtrip exactly
                 // Parse both IPs to normalize them
                 match (ip_str.parse::<Ipv6Addr>(), decoded.parse::<Ipv6Addr>()) {
@@ -144,7 +141,6 @@ proptest! {
                     }
                 }
             }
-        }
     }
 }
 
@@ -219,6 +215,7 @@ fn qc_ipv4_roundtrip(a: u8, b: u8, c: u8, d: u8) -> TestResult {
 }
 
 /// Test that encoding is injective (one-to-one)
+#[allow(clippy::too_many_arguments)]
 #[quickcheck]
 fn qc_encoding_injective(
     a1: u8,
@@ -345,12 +342,11 @@ fn qc_batch_consistency(ips: Vec<u32>) -> TestResult {
         let ip_str = ip.to_string();
 
         // Encode/decode multiple times - should be consistent
-        if let Ok(encoded1) = encode_ip_address(&ip_str) {
-            if let Ok(encoded2) = encode_ip_address(&ip_str) {
-                if encoded1 != encoded2 {
-                    return TestResult::failed();
-                }
-            }
+        if let Ok(encoded1) = encode_ip_address(&ip_str)
+            && let Ok(encoded2) = encode_ip_address(&ip_str)
+            && encoded1 != encoded2
+        {
+            return TestResult::failed();
         }
     }
 
@@ -397,14 +393,14 @@ fn test_special_ipv6_addresses() {
     ];
 
     for addr in special_addresses {
-        if let Ok(encoded) = encode_ip_address(addr) {
-            if let Ok(decoded) = decode_words(&encoded) {
-                // The decoded address may include a port, so check if it starts with the original
-                assert!(
-                    decoded.starts_with(addr) || decoded.starts_with(&format!("[{addr}]")),
-                    "Special IPv6 address roundtrip failed: {addr} -> {decoded}"
-                );
-            }
+        if let Ok(encoded) = encode_ip_address(addr)
+            && let Ok(decoded) = decode_words(&encoded)
+        {
+            // The decoded address may include a port, so check if it starts with the original
+            assert!(
+                decoded.starts_with(addr) || decoded.starts_with(&format!("[{addr}]")),
+                "Special IPv6 address roundtrip failed: {addr} -> {decoded}"
+            );
         }
     }
 }
@@ -455,10 +451,9 @@ proptest! {
     fn prop_custom_socket_roundtrip(socket in socket_addr_strategy()) {
         let socket_str = socket.to_string();
 
-        if let Ok(encoded) = encode_socket_address(&socket_str) {
-            if let Ok(decoded) = decode_socket_address(&encoded) {
+        if let Ok(encoded) = encode_socket_address(&socket_str)
+            && let Ok(decoded) = decode_socket_address(&encoded) {
                 prop_assert_eq!(socket_str, decoded);
             }
-        }
     }
 }

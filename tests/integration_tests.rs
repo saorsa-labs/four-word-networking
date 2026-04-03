@@ -88,10 +88,10 @@ fn test_invalid_input_handling() {
     ];
 
     for input in invalid_inputs {
-        match encode_ip_address(input) {
-            Ok(_) => panic!("Expected error for invalid input: {input}"),
-            Err(_) => {} // Expected
-        }
+        assert!(
+            encode_ip_address(input).is_err(),
+            "Expected error for invalid input: {input}"
+        );
     }
 }
 
@@ -200,7 +200,6 @@ fn test_memory_efficiency() {
     }
 
     // If we get here without OOM, the test passes
-    assert!(true);
 }
 
 /// Test concurrent access

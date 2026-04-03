@@ -63,11 +63,10 @@ mod tests {
             let encoder = FourWordAdaptiveEncoder::new().unwrap();
             let original = format!("{ip}:{port}");
 
-            if let Ok(words) = encoder.encode(&original) {
-                if let Ok(decoded) = encoder.decode(&words) {
+            if let Ok(words) = encoder.encode(&original)
+                && let Ok(decoded) = encoder.decode(&words) {
                     prop_assert_eq!(original, decoded);
                 }
-            }
         }
     }
 
@@ -81,11 +80,10 @@ mod tests {
             let encoder = FourWordAdaptiveEncoder::new().unwrap();
             let addr_str = format!("{ip}:{port}");
 
-            if let Ok(words1) = encoder.encode(&addr_str) {
-                if let Ok(words2) = encoder.encode(&addr_str) {
+            if let Ok(words1) = encoder.encode(&addr_str)
+                && let Ok(words2) = encoder.encode(&addr_str) {
                     prop_assert_eq!(words1, words2);
                 }
-            }
         }
     }
 

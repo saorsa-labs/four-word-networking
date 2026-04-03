@@ -176,7 +176,11 @@ fn test_cli_version_output() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Version output should contain version information
-    assert!(stdout.contains("2.6.0") || stdout.contains("version"));
+    let version = env!("CARGO_PKG_VERSION");
+    assert!(
+        stdout.contains(version) || stdout.contains("version"),
+        "Expected version {version} in output: {stdout}"
+    );
 }
 
 #[test]
