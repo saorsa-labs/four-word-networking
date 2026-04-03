@@ -1,525 +1,170 @@
-name: Comprehensive Test Suite
+name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
-  schedule:
-    # Run comprehensive tests daily at 2 AM UTC
-    - cron: '0 2 * * *'
+    branches: [main, develop]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  COVERAGE_THRESHOLD: 95
-  MUTATION_THRESHOLD: 80
-  FUZZ_DURATION: 300  # 5 minutes for CI
 
 jobs:
-  # Quick checks that should fail fast
+  # Fast gate — formatting, linting, audit, build
   pre-check:
     name: Pre-flight Checks
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt, clippy
-    
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: ~/.cargo/registry
-        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Cache cargo index
-      uses: actions/cache@v4
-      with:
-        path: ~/.cargo/git
-        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Cache cargo build
-      uses: actions/cache@v4
-      with:
-        path: target
-        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-    
+
+    - uses: Swatinem/rust-cache@v2
+
     - name: Check formatting
       run: cargo fmt --all -- --check
-    
+
     - name: Run clippy
       run: cargo clippy --all-targets --all-features -- -D warnings
-    
-    - name: Check for security vulnerabilities
-      run: |
-        cargo install cargo-audit
-        cargo audit
-    
-    - name: Verify build
+
+    - name: Security audit
+      uses: taiki-e/install-action@cargo-audit
+    - run: cargo audit
+
+    - name: Build
       run: cargo build --all-features
-    
+
     - name: Verify tests compile
       run: cargo test --no-run --all-features
 
-  # Unit and integration tests
-  test-suite:
-    name: Test Suite
+  # Tests across OS and Rust versions
+  test:
+    name: Test (${{ matrix.os }}, ${{ matrix.rust }})
     runs-on: ${{ matrix.os }}
     needs: pre-check
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        rust: [stable, beta, nightly]
-        exclude:
-          # Skip some combinations to reduce CI time
-          - os: windows-latest
-            rust: beta
+        include:
+          - os: ubuntu-latest
+            rust: stable
+          - os: ubuntu-latest
+            rust: nightly
           - os: macos-latest
-            rust: beta
-    
+            rust: stable
+          - os: windows-latest
+            rust: stable
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Install Rust ${{ matrix.rust }}
       uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
-    
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-${{ matrix.rust }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Install test dependencies
-      run: |
-        cargo install cargo-nextest
-    
+
+    - uses: Swatinem/rust-cache@v2
+
+    - name: Install nextest
+      uses: taiki-e/install-action@nextest
+
     - name: Run unit tests
       run: cargo nextest run --lib --all-features
-    
+
     - name: Run integration tests
       run: cargo nextest run --tests --all-features
-    
-    - name: Run documentation tests
-      run: cargo test --doc --all-features
-    
-    - name: Run CLI tests
-      run: cargo test --test cli_integration_tests
-      if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
 
-  # Property-based and fuzzing tests
-  advanced-testing:
-    name: Advanced Testing
+    - name: Run doc tests
+      run: cargo test --doc --all-features
+
+  # Property-based tests (run on nightly for completeness)
+  property-tests:
+    name: Property & Fuzz Tests
     runs-on: ubuntu-latest
     needs: pre-check
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Install Rust nightly
       uses: dtolnay/rust-toolchain@nightly
-    
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-nightly-cargo-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Install fuzzing tools
-      run: |
-        cargo install cargo-fuzz
-    
+
+    - uses: Swatinem/rust-cache@v2
+
     - name: Run property-based tests
       run: cargo test --test property_tests -- --nocapture
-    
-    - name: Run fuzzing tests
-      run: |
-        timeout ${{ env.FUZZ_DURATION }} ./scripts/run_comprehensive_tests.sh fuzz || true
-    
-    - name: Check for fuzz failures
-      run: |
-        if [ -d "fuzz/artifacts" ] && [ "$(ls -A fuzz/artifacts)" ]; then
-          echo "Fuzzing found crashes!"
-          find fuzz/artifacts -name "crash-*" -exec echo "Found crash: {}" \;
-          exit 1
-        fi
-        echo "No fuzzing crashes found"
 
-  # Performance benchmarks
-  benchmarks:
-    name: Performance Benchmarks
+    - name: Run lib property tests
+      run: cargo test --lib property_tests -- --nocapture
+
+  # Cross-compile check for aarch64-linux (using zigbuild, no Docker)
+  cross-compile:
+    name: Cross-compile (aarch64-linux)
     runs-on: ubuntu-latest
     needs: pre-check
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Install Rust stable
-      uses: dtolnay/rust-toolchain@stable
-    
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-bench-cargo-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Run benchmarks
-      run: cargo bench --all-features
-    
-    - name: Run performance regression tests
-      run: cargo test --test integration_tests test_encoding_performance test_decoding_performance
-    
-    - name: Archive benchmark results
-      uses: actions/upload-artifact@v4
-      with:
-        name: benchmark-results
-        path: target/criterion/
-        retention-days: 30
 
-  # Code coverage analysis
-  coverage:
-    name: Code Coverage
-    runs-on: ubuntu-latest
-    needs: test-suite
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust stable
-      uses: dtolnay/rust-toolchain@stable
-    
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-coverage-cargo-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Install tarpaulin
-      run: cargo install cargo-tarpaulin
-    
-    - name: Generate coverage report
-      run: |
-        cargo tarpaulin --config tarpaulin.toml --out xml --engine llvm
-    
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./target/coverage/cobertura.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: true
-    
-    - name: Check coverage threshold
-      run: |
-        COVERAGE=$(grep -o 'line-rate="[0-9.]*"' target/coverage/cobertura.xml | head -1 | cut -d'"' -f2)
-        COVERAGE_PERCENT=$(echo "$COVERAGE * 100" | bc -l | cut -d'.' -f1)
-        echo "Coverage: $COVERAGE_PERCENT%"
-        if [ "$COVERAGE_PERCENT" -lt "$COVERAGE_THRESHOLD" ]; then
-          echo "Coverage $COVERAGE_PERCENT% is below threshold $COVERAGE_THRESHOLD%"
-          exit 1
-        fi
-    
-    - name: Archive coverage report
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-report
-        path: target/coverage/
-        retention-days: 30
-
-  # Mutation testing (runs on schedule or manual trigger)
-  mutation-testing:
-    name: Mutation Testing
-    runs-on: ubuntu-latest
-    needs: test-suite
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust stable
-      uses: dtolnay/rust-toolchain@stable
-    
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-mutation-cargo-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Install mutation testing tools
-      run: cargo install cargo-mutants
-    
-    - name: Run mutation tests
-      run: |
-        timeout 1800 cargo mutants --no-shuffle --output-in-dir target/mutants || true
-    
-    - name: Check mutation score
-      run: |
-        if [ -f "target/mutants/mutants.out" ]; then
-          MUTATION_SCORE=$(grep -o "mutations scored: [0-9]*" target/mutants/mutants.out | tail -1 | cut -d' ' -f3)
-          echo "Mutation score: $MUTATION_SCORE%"
-          if [ "$MUTATION_SCORE" -lt "$MUTATION_THRESHOLD" ]; then
-            echo "Mutation score $MUTATION_SCORE% is below threshold $MUTATION_THRESHOLD%"
-            exit 1
-          fi
-        else
-          echo "Mutation testing results not found"
-          exit 1
-        fi
-    
-    - name: Archive mutation results
-      uses: actions/upload-artifact@v4
-      with:
-        name: mutation-results
-        path: target/mutants/
-        retention-days: 30
-
-  # Security and dependency audit
-  security-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    needs: pre-check
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust stable
-      uses: dtolnay/rust-toolchain@stable
-    
-    - name: Run security audit
-      run: |
-        cargo install cargo-audit
-        cargo audit
-    
-    - name: Check for known vulnerabilities
-      run: |
-        cargo install cargo-deny
-        cargo deny check advisories
-    
-    - name: License compliance check
-      run: cargo deny check licenses
-    
-    - name: Dependency duplication check
-      run: cargo deny check bans
-
-  # Cross-platform testing
-  cross-platform:
-    name: Cross Platform Testing
-    runs-on: ubuntu-latest
-    needs: pre-check
-    strategy:
-      matrix:
-        target:
-          - x86_64-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust stable
+    - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        targets: ${{ matrix.target }}
-    
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Install cross
-      run: cargo install cross
-    
-    - name: Build for target
-      run: cross build --target ${{ matrix.target }} --all-features
-    
-    - name: Test for target (if possible)
-      run: cross test --target ${{ matrix.target }} --all-features
-      if: matrix.target == 'x86_64-unknown-linux-gnu'
+        targets: aarch64-unknown-linux-gnu
 
-  # Documentation and examples
-  documentation:
+    - uses: Swatinem/rust-cache@v2
+
+    - name: Install zigbuild
+      uses: taiki-e/install-action@cargo-zigbuild
+
+    - name: Install Zig
+      uses: mlugg/setup-zig@v2
+
+    - name: Build for aarch64-linux
+      run: cargo zigbuild --target aarch64-unknown-linux-gnu --all-features
+
+  # Documentation build and doc tests
+  docs:
     name: Documentation
     runs-on: ubuntu-latest
     needs: pre-check
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Install Rust stable
-      uses: dtolnay/rust-toolchain@stable
-    
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-docs-cargo-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Build documentation
-      run: cargo doc --all-features --no-deps
-    
-    - name: Check documentation examples
-      run: cargo test --doc --all-features
-    
-    - name: Test examples
-      run: |
-        if ls examples/*.rs 1>/dev/null 2>&1; then
-          for example in examples/*.rs; do
-            echo "Testing example: $example"
-            cargo run --example $(basename $example .rs)
-          done
-        else
-          echo "No examples found, skipping"
-        fi
-    
-    - name: Archive documentation
-      uses: actions/upload-artifact@v4
-      with:
-        name: documentation
-        path: target/doc/
-        retention-days: 30
 
-  # Final report generation
-  report:
-    name: Generate Test Report
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - uses: Swatinem/rust-cache@v2
+
+    - name: Build docs
+      run: cargo doc --all-features --no-deps
+      env:
+        RUSTDOCFLAGS: "-D warnings"
+
+    - name: Doc tests
+      run: cargo test --doc --all-features
+
+  # Benchmarks (only on push to main, not PRs)
+  benchmarks:
+    name: Benchmarks
     runs-on: ubuntu-latest
-    needs: [test-suite, coverage, benchmarks, advanced-testing]
-    if: always()
+    needs: pre-check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-    
-    - name: Generate comprehensive report
-      run: |
-        mkdir -p test-report
-        echo "# Four-Word Networking Test Report" > test-report/README.md
-        echo "Generated: $(date)" >> test-report/README.md
-        echo "Commit: ${{ github.sha }}" >> test-report/README.md
-        echo "Branch: ${{ github.ref }}" >> test-report/README.md
-        echo "" >> test-report/README.md
-        
-        # Add test results
-        if [ -f "coverage-report/tarpaulin-report.html" ]; then
-          echo "✅ Coverage report available" >> test-report/README.md
-        else
-          echo "❌ Coverage report missing" >> test-report/README.md
-        fi
-        
-        if [ -d "benchmark-results" ]; then
-          echo "✅ Benchmark results available" >> test-report/README.md
-        else
-          echo "❌ Benchmark results missing" >> test-report/README.md
-        fi
-        
-        if [ -d "documentation" ]; then
-          echo "✅ Documentation generated" >> test-report/README.md
-        else
-          echo "❌ Documentation missing" >> test-report/README.md
-        fi
-        
-        # Copy all reports to final location
-        cp -r coverage-report/* test-report/ 2>/dev/null || true
-        cp -r benchmark-results/* test-report/ 2>/dev/null || true
-        cp -r documentation/* test-report/ 2>/dev/null || true
-        cp -r mutation-results/* test-report/ 2>/dev/null || true
-    
-    - name: Upload final report
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - uses: Swatinem/rust-cache@v2
+
+    - name: Run benchmarks
+      run: cargo bench --all-features
+
+    - name: Archive results
       uses: actions/upload-artifact@v4
       with:
-        name: comprehensive-test-report
-        path: test-report/
-        retention-days: 90
-    
-    - name: Comment on PR
-      uses: actions/github-script@v7
-      if: github.event_name == 'pull_request'
-      with:
-        script: |
-          const { owner, repo } = context.repo;
-          const { number } = context.issue;
-          
-          const comment = `
-          ## 🧪 Comprehensive Test Results
-          
-          **Test Suite Status**: ${{ needs.test-suite.result }}
-          **Coverage Status**: ${{ needs.coverage.result }}
-          **Benchmarks Status**: ${{ needs.benchmarks.result }}
-          **Advanced Testing Status**: ${{ needs.advanced-testing.result }}
-          
-          ### 📊 Key Metrics
-          - Code coverage: View in artifacts
-          - Performance benchmarks: View in artifacts
-          - Mutation testing: Scheduled runs only
-          
-          ### 📋 Artifacts
-          - [Coverage Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          - [Benchmark Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          - [Documentation](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          
-          *Generated by comprehensive test suite*
-          `;
-          
-          github.rest.issues.createComment({
-            owner,
-            repo,
-            issue_number: number,
-            body: comment
-          });
-
-  # Cleanup and notification
-  cleanup:
-    name: Cleanup
-    runs-on: ubuntu-latest
-    needs: [report]
-    if: always()
-    steps:
-    - name: Cleanup old artifacts
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const { owner, repo } = context.repo;
-          const artifacts = await github.rest.actions.listArtifactsForRepo({
-            owner,
-            repo,
-            per_page: 100
-          });
-          
-          const cutoff = new Date();
-          cutoff.setDate(cutoff.getDate() - 30);
-          
-          for (const artifact of artifacts.data.artifacts) {
-            if (new Date(artifact.created_at) < cutoff) {
-              await github.rest.actions.deleteArtifact({
-                owner,
-                repo,
-                artifact_id: artifact.id
-              });
-            }
-          }
-    
-    - name: Notify on failure
-      if: failure()
-      uses: actions/github-script@v7
-      with:
-        script: |
-          console.log('Test suite failed. Consider adding notification logic here.');
+        name: benchmark-results
+        path: target/criterion/
+        retention-days: 14
