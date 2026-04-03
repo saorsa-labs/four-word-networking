@@ -2,7 +2,7 @@
 
 [package]
 name = "four-word-networking"
-version = "2.6.0"
+version = "2.7.0"
 edition = "2024"
 authors = ["David Irvine <david.irvine@autonomi.com>"]
 description = "Convert IP addresses to memorable, family-friendly word groups. Interactive TUI with real-time autocomplete. IPv4 = 4 words, IPv6 = 6-12 words. Perfect reconstruction with progressive hints."
