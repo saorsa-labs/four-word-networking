@@ -336,11 +336,11 @@ fn run_interactive_tui(encoder: &FourWordAdaptiveEncoder, verbose: bool) -> Resu
                             cursor_pos += 1;
 
                             // Auto-complete at 5 characters if unique
-                            if current_input.len() >= 5 {
-                                if let Some(word) = encoder.auto_complete_at_five(&current_input) {
-                                    current_input = word;
-                                    cursor_pos = current_input.len();
-                                }
+                            if current_input.len() >= 5
+                                && let Some(word) = encoder.auto_complete_at_five(&current_input)
+                            {
+                                current_input = word;
+                                cursor_pos = current_input.len();
                             }
                         }
                         _ => {}
@@ -507,33 +507,19 @@ fn handle_enter(
     }
 
     // Try to process as complete address
-    if input.contains(':') || input.contains('[') || input.parse::<std::net::IpAddr>().is_ok() {
-        match encoder.encode(input) {
-            Ok(encoded) => {
-                println!(
-                    "
-🌐 {input} → {encoded}
-"
-                );
-                return Ok(false);
-            }
-            Err(_) => {} // Fall through to word processing
-        }
+    if (input.contains(':') || input.contains('[') || input.parse::<std::net::IpAddr>().is_ok())
+        && let Ok(encoded) = encoder.encode(input)
+    {
+        println!("\n🌐 {input} → {encoded}\n");
+        return Ok(false);
     }
 
     // Try to process as complete word sequence
-    if looks_like_words(input) {
-        match encoder.decode(input) {
-            Ok(decoded) => {
-                println!(
-                    "
-🌐 {input} → {decoded}
-"
-                );
-                return Ok(false);
-            }
-            Err(_) => {} // Fall through to word building
-        }
+    if looks_like_words(input)
+        && let Ok(decoded) = encoder.decode(input)
+    {
+        println!("\n🌐 {input} → {decoded}\n");
+        return Ok(false);
     }
 
     // Add as word to completion
@@ -645,26 +631,24 @@ fn handle_progressive_input(
     // Check for space (word completion)
     if current_input.contains(' ') {
         let parts: Vec<&str> = current_input.split(' ').collect();
-        if let Some(word) = parts.first() {
-            if !word.is_empty() {
-                // Complete the current word
-                if let Some(completed) = try_complete_word(encoder, word) {
-                    current_words.push(completed);
-                    *current_input = parts[1..].join(" ");
+        if let Some(word) = parts.first().filter(|w| !w.is_empty()) {
+            // Complete the current word
+            if let Some(completed) = try_complete_word(encoder, word) {
+                current_words.push(completed);
+                *current_input = parts[1..].join(" ");
 
-                    // Check if we have 4 words (complete IPv4)
-                    if current_words.len() == 4 {
-                        let word_sequence = current_words.join(" ");
-                        if let Ok(decoded) = encoder.decode(&word_sequence) {
-                            println!("✅ Complete! {word_sequence} → {decoded}");
-                        }
-                        current_words.clear();
-                        current_input.clear();
+                // Check if we have 4 words (complete IPv4)
+                if current_words.len() == 4 {
+                    let word_sequence = current_words.join(" ");
+                    if let Ok(decoded) = encoder.decode(&word_sequence) {
+                        println!("✅ Complete! {word_sequence} → {decoded}");
                     }
-                } else {
-                    println!("❌ '{word}' is not a valid word. Try again.");
+                    current_words.clear();
                     current_input.clear();
                 }
+            } else {
+                println!("❌ '{word}' is not a valid word. Try again.");
+                current_input.clear();
             }
         }
     } else {

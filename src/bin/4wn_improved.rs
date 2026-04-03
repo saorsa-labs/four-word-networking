@@ -398,22 +398,20 @@ fn render_smart_ui(
     if matches!(input_type, InputType::Words) && !input.is_empty() {
         // Get the last partial word
         let words: Vec<&str> = input.split_whitespace().collect();
-        if let Some(last_word) = words.last() {
-            if !last_word.is_empty() {
-                let hints = encoder.get_word_hints(last_word);
-                if !hints.is_empty() && hints.len() <= 10 {
-                    queue!(stdout, Print("\n\nHints: "))?;
-                    for (i, hint) in hints.iter().take(5).enumerate() {
-                        if i > 0 {
-                            queue!(stdout, Print(", "))?;
-                        }
-                        queue!(
-                            stdout,
-                            SetForegroundColor(Color::DarkGrey),
-                            Print(hint),
-                            ResetColor
-                        )?;
+        if let Some(last_word) = words.last().filter(|w| !w.is_empty()) {
+            let hints = encoder.get_word_hints(last_word);
+            if !hints.is_empty() && hints.len() <= 10 {
+                queue!(stdout, Print("\n\nHints: "))?;
+                for (i, hint) in hints.iter().take(5).enumerate() {
+                    if i > 0 {
+                        queue!(stdout, Print(", "))?;
                     }
+                    queue!(
+                        stdout,
+                        SetForegroundColor(Color::DarkGrey),
+                        Print(hint),
+                        ResetColor
+                    )?;
                 }
             }
         }
@@ -471,27 +469,25 @@ fn smart_complete(
     }
 
     // Get the last word (partial)
-    if let Some(last_word) = words.last() {
-        if !last_word.is_empty() {
-            let hints = encoder.get_word_hints(last_word);
-            if hints.len() == 1 {
-                // Complete with the single match
+    if let Some(last_word) = words.last().filter(|w| !w.is_empty()) {
+        let hints = encoder.get_word_hints(last_word);
+        if hints.len() == 1 {
+            // Complete with the single match
+            let mut result = words[..words.len() - 1].join(" ");
+            if !result.is_empty() {
+                result.push(' ');
+            }
+            result.push_str(&hints[0]);
+            return Some(result);
+        } else if !hints.is_empty() {
+            // Use the shortest match
+            if let Some(shortest) = hints.iter().min_by_key(|s| s.len()) {
                 let mut result = words[..words.len() - 1].join(" ");
                 if !result.is_empty() {
                     result.push(' ');
                 }
-                result.push_str(&hints[0]);
+                result.push_str(shortest);
                 return Some(result);
-            } else if !hints.is_empty() {
-                // Use the shortest match
-                if let Some(shortest) = hints.iter().min_by_key(|s| s.len()) {
-                    let mut result = words[..words.len() - 1].join(" ");
-                    if !result.is_empty() {
-                        result.push(' ');
-                    }
-                    result.push_str(shortest);
-                    return Some(result);
-                }
             }
         }
     }

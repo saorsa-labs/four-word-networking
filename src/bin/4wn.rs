@@ -159,7 +159,9 @@ fn run(cli: Cli) -> Result<()> {
 /// Detect whether a string is a hex-encoded hash (even number of hex chars, ≥12).
 fn looks_like_hex(s: &str) -> bool {
     let trimmed = s.trim();
-    trimmed.len() >= 12 && trimmed.len() % 2 == 0 && trimmed.chars().all(|c| c.is_ascii_hexdigit())
+    trimmed.len() >= 12
+        && trimmed.len().is_multiple_of(2)
+        && trimmed.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// Hash plain text to SHA-256, returning the hex string.
@@ -195,8 +197,7 @@ fn run_identity(
             // Full identity decode: "w1 w2 w3 w4 @ w5 w6 w7 w8"
             let parsed = encoder.parse(&word_str)?;
             let agent_prefix = encoder.decode_to_prefix(&parsed.agent_words().join(" "))?;
-            let user_prefix =
-                encoder.decode_to_prefix(&parsed.user_words().unwrap().join(" "))?;
+            let user_prefix = encoder.decode_to_prefix(&parsed.user_words().unwrap().join(" "))?;
 
             if quiet {
                 println!("{} {}", hex::encode(agent_prefix), hex::encode(user_prefix));
@@ -223,9 +224,7 @@ fn run_identity(
             } else if verbose {
                 println!("Words:  {}", word_str);
                 println!("Prefix: {} (48 bits)", hex::encode(prefix));
-                println!(
-                    "Use this prefix to search for the agent on the gossip network."
-                );
+                println!("Use this prefix to search for the agent on the gossip network.");
             } else {
                 println!("{}", hex::encode(prefix));
             }
@@ -721,22 +720,20 @@ fn render_smart_ui(
     if matches!(input_type, InputType::Words) && !input.is_empty() {
         // Get the last partial word
         let words: Vec<&str> = input.split_whitespace().collect();
-        if let Some(last_word) = words.last() {
-            if !last_word.is_empty() {
-                let hints = encoder.get_word_hints(last_word);
-                if !hints.is_empty() && hints.len() <= 10 {
-                    queue!(stdout, Print("\n\nHints: "))?;
-                    for (i, hint) in hints.iter().take(5).enumerate() {
-                        if i > 0 {
-                            queue!(stdout, Print(", "))?;
-                        }
-                        queue!(
-                            stdout,
-                            SetForegroundColor(Color::DarkGrey),
-                            Print(hint),
-                            ResetColor
-                        )?;
+        if let Some(last_word) = words.last().filter(|w| !w.is_empty()) {
+            let hints = encoder.get_word_hints(last_word);
+            if !hints.is_empty() && hints.len() <= 10 {
+                queue!(stdout, Print("\n\nHints: "))?;
+                for (i, hint) in hints.iter().take(5).enumerate() {
+                    if i > 0 {
+                        queue!(stdout, Print(", "))?;
                     }
+                    queue!(
+                        stdout,
+                        SetForegroundColor(Color::DarkGrey),
+                        Print(hint),
+                        ResetColor
+                    )?;
                 }
             }
         }
@@ -794,27 +791,25 @@ fn smart_complete(
     }
 
     // Get the last word (partial)
-    if let Some(last_word) = words.last() {
-        if !last_word.is_empty() {
-            let hints = encoder.get_word_hints(last_word);
-            if hints.len() == 1 {
-                // Complete with the single match
+    if let Some(last_word) = words.last().filter(|w| !w.is_empty()) {
+        let hints = encoder.get_word_hints(last_word);
+        if hints.len() == 1 {
+            // Complete with the single match
+            let mut result = words[..words.len() - 1].join(" ");
+            if !result.is_empty() {
+                result.push(' ');
+            }
+            result.push_str(&hints[0]);
+            return Some(result);
+        } else if !hints.is_empty() {
+            // Use the shortest match
+            if let Some(shortest) = hints.iter().min_by_key(|s| s.len()) {
                 let mut result = words[..words.len() - 1].join(" ");
                 if !result.is_empty() {
                     result.push(' ');
                 }
-                result.push_str(&hints[0]);
+                result.push_str(shortest);
                 return Some(result);
-            } else if !hints.is_empty() {
-                // Use the shortest match
-                if let Some(shortest) = hints.iter().min_by_key(|s| s.len()) {
-                    let mut result = words[..words.len() - 1].join(" ");
-                    if !result.is_empty() {
-                        result.push(' ');
-                    }
-                    result.push_str(shortest);
-                    return Some(result);
-                }
             }
         }
     }

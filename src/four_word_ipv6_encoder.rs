@@ -54,9 +54,13 @@ impl Ipv6FourWordGroupEncoding {
         &self.groups
     }
 
-    /// Returns the total word count
+    /// Returns the total word count (excluding empty padding words)
     pub fn word_count(&self) -> usize {
-        self.groups.len() * 4
+        self.groups
+            .iter()
+            .flat_map(|g| g.words().iter())
+            .filter(|w| !w.is_empty())
+            .count()
     }
 
     /// Returns the IPv6 category
@@ -68,7 +72,9 @@ impl Ipv6FourWordGroupEncoding {
     pub fn to_dashed_string(&self) -> String {
         self.groups
             .iter()
-            .map(|g| g.words().join("-"))
+            .flat_map(|g| g.words().iter())
+            .map(|s| s.as_str())
+            .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join("-")
     }
@@ -76,13 +82,14 @@ impl Ipv6FourWordGroupEncoding {
 
 impl std::fmt::Display for Ipv6FourWordGroupEncoding {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let groups_str = self
+        let all_words: Vec<&str> = self
             .groups
             .iter()
-            .map(|g| g.to_string())
-            .collect::<Vec<_>>()
-            .join(" ");
-        write!(f, "{groups_str}")
+            .flat_map(|g| g.words().iter())
+            .map(|s| s.as_str())
+            .filter(|s| !s.is_empty())
+            .collect();
+        write!(f, "{}", all_words.join(" "))
     }
 }
 

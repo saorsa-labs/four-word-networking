@@ -225,7 +225,7 @@ impl FourWordAdaptiveEncoder {
                 return Err(FourWordError::InvalidWordCount {
                     expected: 6,
                     actual: all_words.len(),
-                })
+                });
             }
         };
 

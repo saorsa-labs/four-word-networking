@@ -41,7 +41,7 @@
 //! println!("Agent: {}", words);  // e.g. "highland forest moon river"
 //!
 //! // Decode 4 words back to a 48-bit prefix
-//! let prefix = encoder.decode_to_prefix(&words).unwrap();
+//! let prefix = encoder.decode_to_prefix(&words.to_string()).unwrap();
 //! assert_eq!(&agent_id[..6], &prefix[..]);
 //!
 //! // Encode a full 8-word identity (agent @ user)
@@ -59,9 +59,7 @@ use crate::error::{FourWordError, Result};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdentityWords {
     /// Autonomous agent identity (4 words from AgentId prefix)
-    Agent {
-        words: [String; 4],
-    },
+    Agent { words: [String; 4] },
     /// Human-backed agent identity (4 agent words @ 4 user words)
     Full {
         agent_words: [String; 4],
@@ -235,20 +233,17 @@ impl IdentityEncoder {
     ///
     /// Convenience method that accepts a hex string (as displayed by `x0x agent`).
     pub fn encode_hex(&self, hex_str: &str) -> Result<IdentityWords> {
-        let bytes = hex::decode(hex_str.trim()).map_err(|e| {
-            FourWordError::InvalidInput(format!("Invalid hex string: {e}"))
-        })?;
+        let bytes = hex::decode(hex_str.trim())
+            .map_err(|e| FourWordError::InvalidInput(format!("Invalid hex string: {e}")))?;
         self.encode_agent(&bytes)
     }
 
     /// Encodes two hex strings into a full 8-word identity.
     pub fn encode_hex_full(&self, agent_hex: &str, user_hex: &str) -> Result<IdentityWords> {
-        let agent_bytes = hex::decode(agent_hex.trim()).map_err(|e| {
-            FourWordError::InvalidInput(format!("Invalid agent hex: {e}"))
-        })?;
-        let user_bytes = hex::decode(user_hex.trim()).map_err(|e| {
-            FourWordError::InvalidInput(format!("Invalid user hex: {e}"))
-        })?;
+        let agent_bytes = hex::decode(agent_hex.trim())
+            .map_err(|e| FourWordError::InvalidInput(format!("Invalid agent hex: {e}")))?;
+        let user_bytes = hex::decode(user_hex.trim())
+            .map_err(|e| FourWordError::InvalidInput(format!("Invalid user hex: {e}")))?;
         self.encode_full(&agent_bytes, &user_bytes)
     }
 
@@ -357,12 +352,10 @@ mod tests {
     use super::*;
 
     // Real agent IDs observed on the x0x network (2026-04-03)
-    const BEN_AGENT_ID: &str =
-        "dd6530452610619d468e4e82be82107e86384365c58efa6e3018d7762c7368da";
+    const BEN_AGENT_ID: &str = "dd6530452610619d468e4e82be82107e86384365c58efa6e3018d7762c7368da";
     const DAVID_VPS_AGENT_ID: &str =
         "da2233d6ba2f95696e5f5ba3bc4db193be1aa53d7ce1c048a8e8a67639337b75";
-    const THIRD_AGENT_ID: &str =
-        "3e729de0469a594d1e042a672b29adde388e34aed2ced1e4c244a87f03053770";
+    const THIRD_AGENT_ID: &str = "3e729de0469a594d1e042a672b29adde388e34aed2ced1e4c244a87f03053770";
 
     #[test]
     fn test_encode_agent_id() {

@@ -163,7 +163,8 @@ fn test_ula_encoding_uniqueness() {
 fn test_ula_word_count() {
     let encoder = FourWordAdaptiveEncoder::new().expect("Failed to create encoder");
 
-    // All ULA addresses should use 6 words (compressed category)
+    // ULA compresses to 8 data bytes + 1 header + 2 port = 88 bits → 9 words
+    // (6 words = 72 bits is not enough for 88 bits)
     let addresses = vec![
         "[fc00::]:443",
         "[fd00::]:443",
@@ -173,11 +174,11 @@ fn test_ula_word_count() {
 
     for addr in addresses {
         let encoded = encoder.encode(addr).expect("Failed to encode");
-        let word_count = encoded.split(' ').count();
+        let word_count = encoded.split(' ').filter(|s| !s.is_empty()).count();
 
         assert_eq!(
-            word_count, 6,
-            "ULA address {addr} should encode to 6 words, got {word_count}"
+            word_count, 9,
+            "ULA address {addr} should encode to 9 words, got {word_count}"
         );
     }
 }
@@ -221,11 +222,13 @@ fn test_ula_with_different_ports() {
     let encoder = FourWordAdaptiveEncoder::new().expect("Failed to create encoder");
 
     // Test that different ports produce different encodings
+    // Port 65535 is the sentinel for "no port specified" — the decoder strips it
+    // and returns the bare IP, so we test it separately.
     let base_addr = "fc00::";
-    let ports = vec![80, 443, 8080, 22, 3389, 65535];
+    let ports = vec![80, 443, 8080, 22, 3389];
     let mut encodings = HashSet::new();
 
-    for port in ports {
+    for port in &ports {
         let addr = format!("[{base_addr}]:{port}");
         let encoded = encoder.encode(&addr).expect("Failed to encode");
         let decoded = encoder.decode(&encoded).expect("Failed to decode");
@@ -238,6 +241,19 @@ fn test_ula_with_different_ports() {
             "Duplicate encoding found for port {port}: {encoded}"
         );
     }
+
+    // Port 65535 is the "no port" sentinel — decoded output omits the port
+    let addr_65535 = format!("[{base_addr}]:65535");
+    let encoded = encoder.encode(&addr_65535).expect("Failed to encode");
+    let decoded = encoder.decode(&encoded).expect("Failed to decode");
+    assert_eq!(
+        decoded, base_addr,
+        "Port 65535 should decode as bare IP (no port)"
+    );
+    assert!(
+        encodings.insert(encoded),
+        "Port 65535 encoding should be unique"
+    );
 }
 
 #[test]

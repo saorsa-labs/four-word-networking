@@ -255,10 +255,8 @@ impl Ipv6Compressor {
         // so the remaining bits of segment[0] (fe80-febf) and segments 1-3
         // may be non-zero. If any differ from the canonical form, store all
         // 8 segments to avoid data loss.
-        let is_canonical = segments[0] == 0xfe80
-            && segments[1] == 0
-            && segments[2] == 0
-            && segments[3] == 0;
+        let is_canonical =
+            segments[0] == 0xfe80 && segments[1] == 0 && segments[2] == 0 && segments[3] == 0;
 
         if !is_canonical {
             // Non-canonical link-local — store all 8 segments verbatim.
@@ -734,7 +732,7 @@ impl Ipv6Compressor {
                 _ => {
                     return Err(FourWordError::InvalidInput(format!(
                         "Invalid provider pattern ID: {pattern_id}"
-                    )))
+                    )));
                 }
             }
 
@@ -786,7 +784,7 @@ mod tests {
 
         assert_eq!(compressed.category, Ipv6Category::Loopback);
         assert_eq!(compressed.compressed_data.len(), 6); // Padded to 6 bytes
-                                                         // With category byte + 6 bytes data = 56 bits total = 4 words
+        // With category byte + 6 bytes data = 56 bits total = 4 words
         assert!(compressed.recommended_word_count() >= 4); // IPv6 minimum 4 words
 
         let (decompressed_ip, port) = compressor.decompress(&compressed).unwrap();
