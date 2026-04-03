@@ -250,9 +250,33 @@ impl Ipv6Compressor {
         let segments = ip.segments();
 
         // Link-local: fe80:0000:0000:0000:xxxx:xxxx:xxxx:xxxx
-        // Optimize for common patterns
+        // Per RFC 4291, segments[0] should be exactly 0xfe80 and segments 1-3
+        // should be zero. However, we match on fe80::/10 (first 10 bits),
+        // so the remaining bits of segment[0] (fe80-febf) and segments 1-3
+        // may be non-zero. If any differ from the canonical form, store all
+        // 8 segments to avoid data loss.
+        let is_canonical = segments[0] == 0xfe80
+            && segments[1] == 0
+            && segments[2] == 0
+            && segments[3] == 0;
 
-        // Check for simple patterns (fe80::1, fe80::2, etc.)
+        if !is_canonical {
+            // Non-canonical link-local — store all 8 segments verbatim.
+            let mut compressed = vec![4]; // Marker for full address
+            for &seg in &segments {
+                compressed.extend_from_slice(&seg.to_be_bytes());
+            }
+            let compressed_bits = compressed.len() * 8;
+            return Ok(CompressedIpv6 {
+                category: Ipv6Category::LinkLocal,
+                compressed_data: compressed,
+                original_bits: 128,
+                compressed_bits,
+                port,
+            });
+        }
+
+        // Optimize for common patterns (segments 1-3 are zero)
         let non_zero_segments: Vec<(usize, u16)> = segments[4..8]
             .iter()
             .enumerate()
@@ -557,6 +581,16 @@ impl Ipv6Compressor {
                         i += 3;
                     } else {
                         break;
+                    }
+                }
+            }
+            4 => {
+                // Full address (non-canonical link-local)
+                // Contains all 8 segments as big-endian u16 pairs
+                if data.len() >= 17 {
+                    for (i, seg) in segments.iter_mut().enumerate() {
+                        let off = 1 + (i * 2);
+                        *seg = ((data[off] as u16) << 8) | (data[off + 1] as u16);
                     }
                 }
             }
